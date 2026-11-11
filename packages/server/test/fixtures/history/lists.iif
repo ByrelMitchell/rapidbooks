@@ -1,0 +1,49 @@
+!HDR	PROD	VER	REL	IIFVER	DATE	TIME	ACCNTNT	ACCNTNTSPLITTIME
+HDR	QuickBooks Pro	Version 13.0D	Release R6P	1	03/31/2025	1743400000	N	0
+!ACCNT	NAME	REFNUM	ACCNTTYPE	DESC	ACCNUM	EXTRA	HIDDEN
+ACCNT	Checking	1	BANK				N
+ACCNT	Savings	2	BANK				N
+ACCNT	Accounts Receivable	3	AR				N
+ACCNT	Undeposited Funds	4	OCASSET			UNDEPOSIT	N
+ACCNT	Accounts Payable	5	AP				N
+ACCNT	Visa	6	CCARD				N
+ACCNT	Payroll Liabilities	7	OCLIAB				N
+ACCNT	Opening Bal Equity	8	EQUITY			OPENBAL	N
+ACCNT	Retained Earnings	9	EQUITY			RETEARNINGS	N
+ACCNT	Machining Income	10	INC				N
+ACCNT	Machining Income:Setup Charges	11	INC				N
+ACCNT	Discounts Given	12	INC				N
+ACCNT	Materials	13	COGS				N
+ACCNT	Shop Supplies	14	EXP				N
+ACCNT	Rent	15	EXP				N
+ACCNT	Utilities:Electric	16	EXP				N
+ACCNT	Utilities	17	EXP				N
+ACCNT	Payroll Expenses	18	EXP				N
+ACCNT	Discounts Taken	19	EXINC				N
+ACCNT	Interest Income	20	EXINC				N
+ACCNT	Purchase Orders	21	NONPOSTING				N
+!TERMS	NAME	REFNUM	STDDUEDAYS	STDDISCDAYS	DISCPER	HIDDEN
+TERMS	Net 30	1	30	0	0.0%	N
+TERMS	2% 10 Net 30	2	30	10	2.0%	N
+!CUST	NAME	REFNUM	BADDR1	BADDR2	BADDR3	TERMS	HIDDEN
+CUST	Acme Tool	1	Acme Tool Co.	12 Mill Rd	Dayton, OH 45404	Net 30	N
+CUST	Acme Tool:Fixture 12	2	Acme Tool Co.			Net 30	N
+CUST	Baker Mfg	3	Baker Manufacturing			Net 30	N
+CUST	"Carlson, Inc."	4	"Carlson, Inc."			Net 30	N
+CUST	Delta Pump	5					N
+!VEND	NAME	REFNUM	ADDR1	TERMS	HIDDEN
+VEND	Steel Supply	6	Steel Supply Co.	Net 30	N
+VEND	City Power	7			N
+VEND	Fastenal	8			N
+VEND	Mill Street Properties	9			N
+!EMP	NAME	REFNUM	FIRSTNAME	LASTNAME	HIDDEN
+EMP	Dave Miller	10	Dave	Miller	N
+EMP	Rosa Diaz	11	Rosa	Diaz	N
+!OTHERNAME	NAME	REFNUM	HIDDEN
+OTHERNAME	Owner	12	N
+!INVITEM	NAME	REFNUM	INVITEMTYPE	DESC	PURCHASEDESC	ACCNT	COGSACCNT	PRICE	COST	HIDDEN
+INVITEM	Machining	1	SERV	CNC machining, per hour		Machining Income		85.00		N
+INVITEM	Setup	2	SERV	Machine setup		Machining Income:Setup Charges		150.00		N
+INVITEM	Material	3	PART	Material		Machining Income		40.00		N
+INVITEM	Discount	4	DISC	Discount		Discounts Given		-50.00		N
+INVITEM	Bar Stock	5	PART	Bar stock	Bar stock	Machining Income	Materials	4.00	3.25	N

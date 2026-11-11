@@ -1,0 +1,76 @@
+Trans #	Type	Date	Num	Name	Account	Memo	Item	Qty	Sales Price	Clr	Debit	Credit
+1	General Journal	1/1/2025	OB1		Checking	Opening balance					10,000.00	
+1	General Journal	1/1/2025	OB1		Opening Bal Equity	Opening balance						10,000.00
+2	Invoice	12/15/2024	1000	Baker Mfg	Accounts Receivable						400.00	
+2	Invoice	12/15/2024	1000	Baker Mfg	Machining Income	CNC machining, per hour	Machining	-5	80.00			400.00
+3	Payment	12/30/2024	4410	Baker Mfg	Checking					X	400.00	
+3	Payment	12/30/2024	4410	Baker Mfg	Accounts Receivable							400.00
+4	Invoice	1/6/2025	1001	Acme Tool	Accounts Receivable	"Rush job, per ""PO""
+ship Friday"					1,070.00	
+4	Invoice	1/6/2025	1001	Acme Tool	Machining Income	CNC machining, per hour	Machining	-10	85.00			850.00
+4	Invoice	1/6/2025	1001	Acme Tool	Machining Income:Setup Charges	Machine setup	Setup	-1	150.00			150.00
+4	Invoice	1/6/2025	1001	Acme Tool	Machining Income	"6061 plate, 1/2"""	Material	-3	40.00			120.00
+4	Invoice	1/6/2025	1001	Acme Tool	Discounts Given	Repeat customer, café rate	Discount		50.00-			50.00-
+5	Invoice	1/20/2025	1002	Acme Tool:Fixture 12	Accounts Receivable						340.00	
+5	Invoice	1/20/2025	1002	Acme Tool:Fixture 12	Machining Income	Fixture plate	Machining	-4	85.00			340.00
+6	Invoice	2/3/2025	1003	Baker Mfg	Accounts Receivable						1,825.00	
+6	Invoice	2/3/2025	1003	Baker Mfg	Machining Income	CNC machining, per hour	Machining	-20	85.00			1,700.00
+6	Invoice	2/3/2025	1003	Baker Mfg	Machining Income	"Bar, 1"""	Material	-10	12.50			125.00
+7	Invoice	2/10/2025	1004	Carlson, Inc.	Accounts Receivable						660.00	
+7	Invoice	2/10/2025	1004	Carlson, Inc.	Machining Income	Machine setup	Setup	-1	150.00			150.00
+7	Invoice	2/10/2025	1004	Carlson, Inc.	Machining Income	CNC machining, per hour	Machining	-6	85.00			510.00
+8	Credit Memo	2/12/2025	1005	Baker Mfg	Accounts Receivable							170.00
+8	Credit Memo	2/12/2025	1005	Baker Mfg	Machining Income	Scrapped parts	Machining	2	85.00		170.00	
+9	Payment	2/20/2025	5512	Acme Tool	Undeposited Funds						1,410.00	
+9	Payment	2/20/2025	5512	Acme Tool	Accounts Receivable							1,410.00
+10	Payment	2/25/2025	7781	Baker Mfg	Undeposited Funds						1,000.00	
+10	Payment	2/25/2025	7781	Baker Mfg	Accounts Receivable							1,000.00
+11	Payment	3/3/2025	221	Delta Pump	Undeposited Funds	Deposit on next job					500.00	
+11	Payment	3/3/2025	221	Delta Pump	Accounts Receivable							500.00
+12	Deposit	3/5/2025			Checking	Deposit				X	2,422.34	
+12	Deposit	3/5/2025		Acme Tool	Undeposited Funds							1,410.00
+12	Deposit	3/5/2025		Baker Mfg	Undeposited Funds							1,000.00
+12	Deposit	3/5/2025			Interest Income	Interest, Feb						12.34
+13	Invoice	3/10/2025	1006	Old Customer LLC	Accounts Receivable						85.00	
+13	Invoice	3/10/2025	1006	Old Customer LLC	Machining Income	Repair	Machining	-1	85.00			85.00
+14	Bill	2/1/2025	S-4471	Steel Supply	Accounts Payable							399.50
+14	Bill	2/1/2025	S-4471	Steel Supply	Materials	Bar stock	Bar Stock	100	3.25		325.00	
+14	Bill	2/1/2025	S-4471	Steel Supply	Shop Supplies	Cutting oil					74.50	
+15	Bill	2/15/2025	Feb-25	City Power	Accounts Payable							212.40
+15	Bill	2/15/2025	Feb-25	City Power	Utilities:Electric	February					212.40	
+16	Bill	2/20/2025	S-4502	Steel Supply	Accounts Payable							600.00
+16	Bill	2/20/2025	S-4502	Steel Supply	Materials	Plate					600.00	
+17	Credit	2/22/2025	CR-88	Steel Supply	Accounts Payable						50.00	
+17	Credit	2/22/2025	CR-88	Steel Supply	Materials	Returned short pieces						50.00
+18	Bill Pmt -Check	3/1/2025	3001	Steel Supply	Checking					X		399.50
+18	Bill Pmt -Check	3/1/2025	3001	Steel Supply	Accounts Payable						399.50	
+19	Bill Pmt -Check	3/2/2025	3002	Steel Supply	Checking							538.00
+19	Bill Pmt -Check	3/2/2025	3002	Steel Supply	Accounts Payable						550.00	
+19	Bill Pmt -Check	3/2/2025	3002	Steel Supply	Discounts Taken	Discount						12.00
+20	Check	3/4/2025	3003	Fastenal	Checking					X		165.10
+20	Check	3/4/2025	3003	Fastenal	Shop Supplies	Drill bits, taps					45.10	
+20	Check	3/4/2025	3003	Fastenal	Equipment Repairs	Spindle belt					120.00	
+21	Check	3/6/2025	3004	Mill Street Properties	Checking					X		1,500.00
+21	Check	3/6/2025	3004	Mill Street Properties	Rent	March rent					1,500.00	
+22	Transfer	3/7/2025			Checking	To savings				X		2,000.00
+22	Transfer	3/7/2025			Savings	To savings					2,000.00	
+23	Sales Receipt	3/12/2025	SR-1	Delta Pump	Checking						95.00	
+23	Sales Receipt	3/12/2025	SR-1	Delta Pump	Machining Income	Walk-in job	Machining	-1	95.00			95.00
+24	Paycheck	3/14/2025	3005	Dave Miller	Checking							1,232.16
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Expenses		Hourly Rate	80	20.00		1,600.00	
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Liabilities		Federal Withholding					245.44
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Liabilities		Social Security Employee					99.20
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Liabilities		Medicare Employee					23.20
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Expenses		Social Security Company				99.20	
+24	Paycheck	3/14/2025	3005	Dave Miller	Payroll Liabilities		Social Security Company					99.20
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Checking							958.20
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Expenses		Hourly Rate	60	20.00		1,200.00	
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Liabilities		Federal Withholding					150.00
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Liabilities		Social Security Employee					74.40
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Liabilities		Medicare Employee					17.40
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Expenses		Social Security Company				74.40	
+25	Paycheck	3/28/2025	3006	Rosa Diaz	Payroll Liabilities		Social Security Company					74.40
+26	General Journal	3/20/2025	GJ-BAD		Rent	Typo in QuickBooks?					100.00	
+26	General Journal	3/20/2025	GJ-BAD		Checking	Typo in QuickBooks?						90.00
+27	General Journal	3/31/2025	GJ2		Utilities	Reclass, water					15.00	
+27	General Journal	3/31/2025	GJ2		Shop Supplies	Reclass, water						15.00

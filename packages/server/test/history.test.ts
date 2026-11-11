@@ -407,7 +407,7 @@ describe('speed', () => {
     expect(r.locked).toEqual([]);
     expect((db.prepare('SELECT SUM(amount) AS n FROM splits').get() as { n: number }).n).toBe(0);
     expect(secs).toBeLessThan(55);
-    console.log(`60,000 transactions / ${rows} rows imported in ${secs.toFixed(1)} s`);
+    console.log(`60,000 transactions / ${rows} rows imported in ${secs.toFixed(1)} s`, r.phases);
   }, 120_000);
 });
 

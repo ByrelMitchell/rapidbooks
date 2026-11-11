@@ -1,0 +1,17 @@
+Machine Shop Co,,,,,,,,,
+Open Invoices,,,,,,,,,
+"As of March 31, 2025",,,,,,,,,
+,,Type,Date,Num,P. O. #,Terms,Due Date,Aging,Open Balance
+Baker Mfg,,,,,,,,,
+,,Invoice,02/03/2025,1003,,Net 30,03/05/2025,26,655.00
+Total Baker Mfg,,,,,,,,,655.00
+"Carlson, Inc.",,,,,,,,,
+,,Invoice,02/10/2025,1004,,Net 30,03/12/2025,19,660.00
+"Total Carlson, Inc.",,,,,,,,,660.00
+Delta Pump,,,,,,,,,
+,,Payment,03/03/2025,221,,,,,-500.00
+Total Delta Pump,,,,,,,,,-500.00
+Old Customer LLC,,,,,,,,,
+,,Invoice,03/10/2025,1006,,,03/10/2025,21,85.00
+Total Old Customer LLC,,,,,,,,,85.00
+TOTAL,,,,,,,,,900.00

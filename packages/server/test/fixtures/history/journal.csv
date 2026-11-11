@@ -1,0 +1,135 @@
+﻿Machine Shop Co,,,,
+Journal,,,,
+All Transactions,,,,
+
+,Trans #,Type,Date,Num,Name,Memo,Item,Item Description,Qty,Sales Price,Account,,Clr,P. O. #,Terms,Due Date,Pay Meth,Open Balance,Debit,Credit
+,1,General Journal,1/1/25,OB1,,Opening balance,,,,,Checking,,,,,,,,"10,000.00",
+,,,,,,Opening balance,,,,,Opening Bal Equity,,,,,,,,,"10,000.00"
+,,,,,,,,,,,,,,,,,,,"10,000.00","10,000.00"
+
+,2,Invoice,12/15/24,1000,Baker Mfg,,,,,,Accounts Receivable,,,,Net 30,1/14/25,,0.00,400.00,
+,,,,,Baker Mfg,"CNC machining, per hour",Machining,"CNC machining, per hour",-5,80.00,Machining Income,,,,,,,,,400.00
+,,,,,,,,,,,,,,,,,,,400.00,400.00
+
+,3,Payment,12/30/24,4410,Baker Mfg,,,,,,Checking,,√,,,,Check,,400.00,
+,,,,,Baker Mfg,,,,,,Accounts Receivable,,,,,,,0.00,,400.00
+,,,,,,,,,,,,,,,,,,,400.00,400.00
+
+,4,Invoice,1/6/25,1001,Acme Tool,"Rush job, per ""PO""
+ship Friday",,,,,Accounts Receivable,,,A-778,Net 30,2/5/25,,0.00,"1,070.00",
+,,,,,Acme Tool,"CNC machining, per hour",Machining,"CNC machining, per hour",-10,85.00,Machining Income,,,,,,,,,850.00
+,,,,,Acme Tool,Machine setup,Setup,Machine setup,-1,150.00,Machining Income:Setup Charges,,,,,,,,,150.00
+,,,,,Acme Tool,"6061 plate, 1/2""",Material,"6061 plate, 1/2""",-3,40.00,Machining Income,,,,,,,,,120.00
+,,,,,Acme Tool,"Repeat customer, café rate",Discount,"Repeat customer, café rate",,(50.00),Discounts Given,,,,,,,,,(50.00)
+,,,,,,,,,,,,,,,,,,,"1,120.00","1,120.00"
+
+,5,Invoice,1/20/25,1002,Acme Tool:Fixture 12,,,,,,Accounts Receivable,,,,Net 30,2/19/25,,0.00,340.00,
+,,,,,Acme Tool:Fixture 12,Fixture plate,Machining,Fixture plate,-4,85.00,Machining Income,,,,,,,,,340.00
+,,,,,,,,,,,,,,,,,,,340.00,340.00
+
+,6,Invoice,2/3/25,1003,Baker Mfg,,,,,,Accounts Receivable,,,,Net 30,3/5/25,,655.00,"1,825.00",
+,,,,,Baker Mfg,"CNC machining, per hour",Machining,"CNC machining, per hour",-20,85.00,Machining Income,,,,,,,,,"1,700.00"
+,,,,,Baker Mfg,"Bar, 1""",Material,"Bar, 1""",-10,12.50,Machining Income,,,,,,,,,125.00
+,,,,,,,,,,,,,,,,,,,"1,825.00","1,825.00"
+
+,7,Invoice,2/10/25,1004,"Carlson, Inc.",,,,,,Accounts Receivable,,,,Net 30,3/12/25,,660.00,660.00,
+,,,,,"Carlson, Inc.",Machine setup,Setup,Machine setup,-1,150.00,Machining Income,,,,,,,,,150.00
+,,,,,"Carlson, Inc.","CNC machining, per hour",Machining,"CNC machining, per hour",-6,85.00,Machining Income,,,,,,,,,510.00
+,,,,,,,,,,,,,,,,,,,660.00,660.00
+
+,8,Credit Memo,2/12/25,1005,Baker Mfg,,,,,,Accounts Receivable,,,,,,,0.00,,170.00
+,,,,,Baker Mfg,Scrapped parts,Machining,Scrapped parts,2,85.00,Machining Income,,,,,,,,170.00,
+,,,,,,,,,,,,,,,,,,,170.00,170.00
+
+,9,Payment,2/20/25,5512,Acme Tool,,,,,,Undeposited Funds,,,,,,Check,,"1,410.00",
+,,,,,Acme Tool,,,,,,Accounts Receivable,,,,,,,0.00,,"1,410.00"
+,,,,,,,,,,,,,,,,,,,"1,410.00","1,410.00"
+
+,10,Payment,2/25/25,7781,Baker Mfg,,,,,,Undeposited Funds,,,,,,Check,,"1,000.00",
+,,,,,Baker Mfg,,,,,,Accounts Receivable,,,,,,,0.00,,"1,000.00"
+,,,,,,,,,,,,,,,,,,,"1,000.00","1,000.00"
+
+,11,Payment,3/3/25,221,Delta Pump,Deposit on next job,,,,,Undeposited Funds,,,,,,Check,,500.00,
+,,,,,Delta Pump,,,,,,Accounts Receivable,,,,,,,(500.00),,500.00
+,,,,,,,,,,,,,,,,,,,500.00,500.00
+
+,12,Deposit,3/5/25,,,Deposit,,,,,Checking,,√,,,,,,"2,422.34",
+,,,,,Acme Tool,,,,,,Undeposited Funds,,,,,,,,,"1,410.00"
+,,,,,Baker Mfg,,,,,,Undeposited Funds,,,,,,,,,"1,000.00"
+,,,,,,"Interest, Feb",,,,,Interest Income,,,,,,,,,12.34
+,,,,,,,,,,,,,,,,,,,"2,422.34","2,422.34"
+
+,13,Invoice,3/10/25,1006,Old Customer LLC,,,,,,Accounts Receivable,,,,,,,85.00,85.00,
+,,,,,Old Customer LLC,Repair,Machining,Repair,-1,85.00,Machining Income,,,,,,,,,85.00
+,,,,,,,,,,,,,,,,,,,85.00,85.00
+
+,14,Bill,2/1/25,S-4471,Steel Supply,,,,,,Accounts Payable,,,,Net 30,3/3/25,,0.00,,399.50
+,,,,,Steel Supply,Bar stock,Bar Stock,Bar stock,100,3.25,Materials,,,,,,,,325.00,
+,,,,,Steel Supply,Cutting oil,,,,,Shop Supplies,,,,,,,,74.50,
+,,,,,,,,,,,,,,,,,,,399.50,399.50
+
+,15,Bill,2/15/25,Feb-25,City Power,,,,,,Accounts Payable,,,,,3/17/25,,212.40,,212.40
+,,,,,City Power,February,,,,,Utilities:Electric,,,,,,,,212.40,
+,,,,,,,,,,,,,,,,,,,212.40,212.40
+
+,16,Bill,2/20/25,S-4502,Steel Supply,,,,,,Accounts Payable,,,,2% 10 Net 30,3/22/25,,0.00,,600.00
+,,,,,Steel Supply,Plate,,,,,Materials,,,,,,,,600.00,
+,,,,,,,,,,,,,,,,,,,600.00,600.00
+
+,17,Credit,2/22/25,CR-88,Steel Supply,,,,,,Accounts Payable,,,,,,,0.00,50.00,
+,,,,,Steel Supply,Returned short pieces,,,,,Materials,,,,,,,,,50.00
+,,,,,,,,,,,,,,,,,,,50.00,50.00
+
+,18,Bill Pmt -Check,3/1/25,3001,Steel Supply,,,,,,Checking,,√,,,,,,,399.50
+,,,,,Steel Supply,,,,,,Accounts Payable,,,,,,,0.00,399.50,
+,,,,,,,,,,,,,,,,,,,399.50,399.50
+
+,19,Bill Pmt -Check,3/2/25,3002,Steel Supply,,,,,,Checking,,,,,,,,,538.00
+,,,,,Steel Supply,,,,,,Accounts Payable,,,,,,,0.00,550.00,
+,,,,,Steel Supply,Discount,,,,,Discounts Taken,,,,,,,,,12.00
+,,,,,,,,,,,,,,,,,,,550.00,550.00
+
+,20,Check,3/4/25,3003,Fastenal,,,,,,Checking,,√,,,,,,,165.10
+,,,,,Fastenal,"Drill bits, taps",,,,,Shop Supplies,,,,,,,,45.10,
+,,,,,Fastenal,Spindle belt,,,,,Equipment Repairs,,,,,,,,120.00,
+,,,,,,,,,,,,,,,,,,,165.10,165.10
+
+,21,Check,3/6/25,3004,Mill Street Properties,,,,,,Checking,,√,,,,,,,"1,500.00"
+,,,,,Mill Street Properties,March rent,,,,,Rent,,,,,,,,"1,500.00",
+,,,,,,,,,,,,,,,,,,,"1,500.00","1,500.00"
+
+,22,Transfer,3/7/25,,,To savings,,,,,Checking,,√,,,,,,,"2,000.00"
+,,,,,,To savings,,,,,Savings,,,,,,,,"2,000.00",
+,,,,,,,,,,,,,,,,,,,"2,000.00","2,000.00"
+
+,23,Sales Receipt,3/12/25,SR-1,Delta Pump,,,,,,Checking,,,,,,,,95.00,
+,,,,,Delta Pump,Walk-in job,Machining,Walk-in job,-1,95.00,Machining Income,,,,,,,,,95.00
+,,,,,,,,,,,,,,,,,,,95.00,95.00
+
+,24,Paycheck,3/14/25,3005,Dave Miller,,,,,,Checking,,,,,,,,,"1,232.16"
+,,,,,Dave Miller,,Hourly Rate,,80,20.00,Payroll Expenses,,,,,,,,"1,600.00",
+,,,,,Dave Miller,,Federal Withholding,,,,Payroll Liabilities,,,,,,,,,245.44
+,,,,,Dave Miller,,Social Security Employee,,,,Payroll Liabilities,,,,,,,,,99.20
+,,,,,Dave Miller,,Medicare Employee,,,,Payroll Liabilities,,,,,,,,,23.20
+,,,,,Dave Miller,,Social Security Company,,,,Payroll Expenses,,,,,,,,99.20,
+,,,,,Dave Miller,,Social Security Company,,,,Payroll Liabilities,,,,,,,,,99.20
+,,,,,,,,,,,,,,,,,,,"1,699.20","1,699.20"
+
+,25,Paycheck,3/28/25,3006,Rosa Diaz,,,,,,Checking,,,,,,,,,958.20
+,,,,,Rosa Diaz,,Hourly Rate,,60,20.00,Payroll Expenses,,,,,,,,"1,200.00",
+,,,,,Rosa Diaz,,Federal Withholding,,,,Payroll Liabilities,,,,,,,,,150.00
+,,,,,Rosa Diaz,,Social Security Employee,,,,Payroll Liabilities,,,,,,,,,74.40
+,,,,,Rosa Diaz,,Medicare Employee,,,,Payroll Liabilities,,,,,,,,,17.40
+,,,,,Rosa Diaz,,Social Security Company,,,,Payroll Expenses,,,,,,,,74.40,
+,,,,,Rosa Diaz,,Social Security Company,,,,Payroll Liabilities,,,,,,,,,74.40
+,,,,,,,,,,,,,,,,,,,"1,274.40","1,274.40"
+
+,26,General Journal,3/20/25,GJ-BAD,,Typo in QuickBooks?,,,,,Rent,,,,,,,,100.00,
+,,,,,,Typo in QuickBooks?,,,,,Checking,,,,,,,,,90.00
+,,,,,,,,,,,,,,,,,,,100.00,90.00
+
+,27,General Journal,3/31/25,GJ2,,"Reclass, water",,,,,Utilities,,,,,,,,15.00,
+,,,,,,"Reclass, water",,,,,Shop Supplies,,,,,,,,,15.00
+,,,,,,,,,,,,,,,,,,,15.00,15.00
+
+TOTAL,,,,,,,,,,,,,,,,,,,"29,292.44","29,292.44"
