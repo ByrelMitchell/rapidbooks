@@ -37,7 +37,7 @@ const KINDS: Record<NameKind, { title: string; noun: string; newLabel: string; c
     newLabel: 'New Employee',
     columns: [nameCol, { key: 'ssn', title: 'SSN', width: '9rem', render: (n) => maskSsn(n.ssn) }],
   },
-  other: { title: 'Name', noun: 'name', newLabel: 'New Name', columns: [nameCol, notesCol] },
+  other: { title: 'Other Names', noun: 'name', newLabel: 'New Name', columns: [nameCol, { ...notesCol, width: '10rem' }] },
 };
 
 /** Customer:Job, Vendor, Employee and Other Names lists: one component, driven by kind. */
@@ -58,49 +58,23 @@ export function NameList({ winId, kind }: WinProps & { kind: NameKind }) {
       onNew={() => desk.open(dialog, { id: null })}
       onEdit={(n) => desk.open(dialog, { id: n.id })}
       onQuickReport={(n) => openQuickReport(desk, { name_id: n.id })}
-      extraButtons={
+      moreEntries={kind === 'customer' ? (cur) => [{ label: 'Add &Job', action: cur ? () => desk.open(dialog, { id: null, parentId: cur.id }) : undefined }] : undefined}
+      activities={
         kind === 'customer'
-          ? (cur) => (
-              <>
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={!cur}
-                  onClick={() => cur && desk.open(dialog, { id: null, parentId: cur.id })}
-                >
-                  Add Job
-                </button>
-                {/* Activities */}
-                <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('invoice', { id: null, customerId: cur.id })}>
-                  Create Invoices
-                </button>
-                <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('payment', { id: null, customerId: cur.id })}>
-                  Receive Payments
-                </button>
-              </>
-            )
+          ? (cur) => [
+              { label: 'Create &Invoices', shortcut: 'Ctrl+I', action: () => desk.open('invoice', cur ? { id: null, customerId: cur.id } : { id: null }) },
+              { label: '&Receive Payments', action: () => desk.open('payment', cur ? { id: null, customerId: cur.id } : { id: null }) },
+              { label: 'Create &Credit Memos/Refunds', action: () => desk.open('creditmemo', cur ? { id: null, customerId: cur.id } : { id: null }) },
+            ]
           : kind === 'vendor'
-            ? (cur) => (
-                <>
-                  {/* Activities */}
-                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('bill', { id: null, vendorId: cur.id })}>
-                    Enter Bills
-                  </button>
-                  <button type="button" className="btn" onClick={() => desk.open('paybills')}>
-                    Pay Bills
-                  </button>
-                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('purchaseorder', { id: null, vendorId: cur.id })}>
-                    Create Purchase Orders
-                  </button>
-                </>
-              )
+            ? (cur) => [
+                { label: '&Enter Bills', action: () => desk.open('bill', cur ? { id: null, vendorId: cur.id } : { id: null }) },
+                { label: 'Pay &Bills', action: () => desk.open('paybills') },
+                { label: 'Create &Purchase Orders', action: () => desk.open('purchaseorder', cur ? { id: null, vendorId: cur.id } : { id: null }) },
+              ]
             : kind === 'employee'
-              ? (cur) => (
-                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('paycheck', { id: null, employeeId: cur.id })}>
-                    Write Paycheck
-                  </button>
-                )
-              : undefined
+              ? (cur) => [{ label: '&Pay Employees', action: () => desk.open('paycheck', cur ? { id: null, employeeId: cur.id } : { id: null }) }]
+              : (_cur) => [{ label: '&Write Checks', shortcut: 'Ctrl+W', action: () => desk.open('check', { id: null }) }]
       }
     />
   );

@@ -4,6 +4,7 @@ import { logOff } from '../admin/logOff';
 import { sessionState, useSession } from '../admin/session';
 import { Mnemonic, parseMnemonic } from '../util';
 import { isModalOpen, toggleFullScreen, useDesktop, type CommandName, type Desktop } from './desktop';
+import { registry } from './registry';
 import { openRegister } from './shortcuts';
 import { setViewPref, useViewPrefs, type ViewPrefs } from './viewPrefs';
 
@@ -82,6 +83,8 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
         },
         { label: '&Hide Icon Bar', checked: !prefs.iconBar, action: () => setViewPref('iconBar', false) },
         { label: '&Large List Font', checked: prefs.largeLists, action: () => setViewPref('largeLists', !prefs.largeLists) },
+        'sep',
+        { label: 'Ma&ximize Windows', checked: prefs.maxWindows, action: () => setViewPref('maxWindows', !prefs.maxWindows) },
       ],
     },
     {
@@ -127,6 +130,8 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
         { label: 'Create &Statements...', action: () => desk.open('statements') },
         { label: 'Assess Finance &Charges', action: () => desk.open('financecharges') },
         { label: '&Receive Payments', action: () => desk.open('payment', { id: null }) },
+        'sep',
+        { label: 'Change Item &Prices', action: () => desk.open('itemprices') },
       ],
     },
     {
@@ -142,6 +147,7 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
     {
       label: 'Emplo&yees',
       items: [
+        { label: 'Employee &Center', action: () => desk.open('employeecenter') },
         { label: '&Employee List', action: () => desk.open('employees') },
         { label: 'Payroll &Item List', action: () => desk.open('payrollitems') },
         'sep',
@@ -212,7 +218,10 @@ const firstEnabled = (items: MenuEntry[]) => step(items, -1, 1);
 export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
   const desk = useDesktop();
   useSession(); // re-render when login state changes (File > Log Off)
-  const menus = buildMenus(desk, useReportsMenu(desk), useViewPrefs());
+  const prefs = useViewPrefs();
+  const menus = buildMenus(desk, useReportsMenu(desk), prefs);
+  const activeKind = desk.windows.find((w) => w.id === desk.activeId)?.kind;
+  const maxActive = prefs.maxWindows && !!activeKind && !!registry[activeKind]?.max;
   const [open, setOpen] = useState<number | null>(null);
   const [item, setItem] = useState(-1);
   // The open submenu belongs to the hot item `item`; subItem is the hot entry inside it.
@@ -424,6 +433,16 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
           )}
         </div>
       ))}
+      {maxActive && desk.activeId && (
+        <div className="mdi-controls" onClick={(e) => e.stopPropagation()}>
+          <button type="button" tabIndex={-1} title="Restore Down (View > Maximize Windows)" aria-label="Restore down" onClick={() => setViewPref('maxWindows', false)}>
+            ❐
+          </button>
+          <button type="button" tabIndex={-1} title="Close (Esc)" aria-label="Close window" onClick={() => void desk.requestClose(desk.activeId!)}>
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

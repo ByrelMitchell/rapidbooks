@@ -176,10 +176,33 @@ const GROUPS: Group[] = [
       {
         title: 'Pay Bills',
         rows: [
-          [k('Alt', 'A'), 'Pay All Bills.'],
+          [k('Alt', 'S'), 'Pay Selected Bills (then Pay More Bills, Print Checks or Done).'],
+          [k('Alt', 'A'), 'Select All Bills.'],
           [k('Alt', 'I'), 'Clear Selections.'],
-          [k('Alt', 'D'), 'Set Discount for the bill you are on.'],
-          [k('Alt', 'T'), 'Set Credits for the bill you are on.'],
+          [k('Alt', 'D'), 'Set Discount for the highlighted bill.'],
+          [k('Alt', 'T'), 'Set Credits for the highlighted bill.'],
+        ],
+      },
+      {
+        title: 'Make General Journal Entries',
+        rows: [
+          [k('Alt', 'P'), 'Previous entry.'],
+          [k('Alt', 'X'), 'Next entry.'],
+        ],
+      },
+      { title: 'Make Deposits', rows: [[k('Alt', 'T'), 'The Deposit To field.']] },
+      {
+        title: 'Transfer Funds',
+        rows: [
+          [k('Alt', 'M'), 'Transfer Funds From.'],
+          [k('Alt', 'T'), 'Transfer Funds To.'],
+        ],
+      },
+      {
+        title: 'Change Item Prices (Customers menu, or Item List > Activities)',
+        rows: [
+          [k('Space'), 'In the New Price column: tick or untick the item, for Adjust.'],
+          [k('Ctrl', 'Enter'), 'OK: save every changed price.'],
         ],
       },
     ],
@@ -193,7 +216,7 @@ const GROUPS: Group[] = [
         </>,
         'Move through a list or register.',
       ],
-      [k('Enter'), 'Open the selected entry or transaction (or double-click it).'],
+      [k('Enter'), 'Open the selected entry or transaction (or double-click it). In a register, Enter on the empty line at the bottom starts a new one.'],
       [
         <>
           {k('Ctrl', 'N')}, {k('Ctrl', 'E')}, {k('Ctrl', 'D')}

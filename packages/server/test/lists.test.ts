@@ -1,10 +1,10 @@
-import { ItemInput, NameInput, TermsInput, TxnInput, type NameKind } from '@rapidbooks/shared';
+import { ItemInput, ItemPricesInput, NameInput, TermsInput, TxnInput, type NameKind } from '@rapidbooks/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
 import { openDb, seedDefaults, type DB } from '../src/db';
 import { deleteAccount, listAccounts } from '../src/ledger/accounts';
 import { deleteTxn, saveTxn } from '../src/ledger/posting';
-import { createItem, deleteItem, getItem, listItems, updateItem } from '../src/lists/items';
+import { changeItemPrices, createItem, deleteItem, getItem, listItems, updateItem } from '../src/lists/items';
 import { createName, deleteName, getName, listNames, updateName } from '../src/lists/names';
 import { createTerms, deleteTerms, getTerms, listTerms, updateTerms } from '../src/lists/terms';
 
@@ -169,6 +169,18 @@ describe('terms', () => {
 });
 
 describe('items', () => {
+  it('changes several prices at once, or none when one cannot change', () => {
+    const a = item('Machining', { rate: 6500 });
+    const b = item('Bar Stock', { type: 'PART', rate: 1250 });
+    const pct = item('Repeat', { type: 'DISCOUNT', rate: 1000, rate_is_percent: true });
+    expect(changeItemPrices(db, ItemPricesInput.parse({ prices: [{ id: a, rate: 7000 }, { id: b, rate: 13.75 }] }))).toBe(2);
+    expect([getItem(db, a).rate, getItem(db, b).rate]).toEqual([7000, 13.75]);
+    expect(() => changeItemPrices(db, ItemPricesInput.parse({ prices: [{ id: a, rate: 1 }, { id: pct, rate: 5 }] }))).toThrow(
+      /cannot be changed/,
+    );
+    expect(getItem(db, a).rate).toBe(7000);
+  });
+
   it('lists by type with subitems under their parent', () => {
     const mach = item('Machining', { rate: 6500 });
     item('Setup', { parent_id: mach, rate: 4500 });

@@ -8,6 +8,7 @@
 }
 
 .f13 {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -499,6 +500,430 @@
   text-align: right;
 }
 
+/* ---------- Maximized: the grid takes the height that is left ---------- */
+
+.win.max .f13-page > .grid-wrap,
+.win.max .f13-page > .grow-grid,
+.win.max .f13-page > .ei-panel {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  max-height: none;
+}
+
+.ei-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ei-panel > .grid-wrap {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+.win:not(.max) .ei-panel > .grid-wrap {
+  max-height: 16rem;
+}
+
+/* ---------- Expenses / Items tabs ---------- */
+
+.ei-tabs {
+  display: flex;
+  gap: 0.125rem;
+  margin-top: 0.25rem;
+}
+
+.ei-tab {
+  display: flex;
+  gap: 2.5rem;
+  justify-content: space-between;
+  min-width: 11.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9375rem;
+  color: #333333;
+  background: #d8d8d8;
+  border: none;
+  cursor: default;
+}
+
+.ei-tab.on {
+  background: var(--field);
+  color: #000;
+  font-weight: bold;
+}
+
+.ei-tab b {
+  font-weight: normal;
+}
+
+.ei-tab.on b {
+  font-weight: bold;
+}
+
+/* ---------- The "paper" of a bill, check or transfer ---------- */
+
+.paper {
+  position: relative;
+  padding: 0.75rem 1.25rem 0.875rem;
+  background-color: #f6f6fb;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cg stroke='%23d6d8e8' stroke-width='1' fill='none'%3E%3Cpath d='M2 6l5-3M10 4l3 5M17 2l6 2M4 14l2 5M11 12l6 1M20 9l2 6M2 23l6-1M12 20l3 4M19 19l5 3'/%3E%3C/g%3E%3C/svg%3E");
+  border: 0.1875rem solid #ff22ee;
+  max-width: 58rem;
+}
+
+.paper.chkpaper {
+  background-color: #f4f8f4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cg stroke='%23d4e2d4' stroke-width='1' fill='none'%3E%3Cpath d='M2 6l5-3M10 4l3 5M17 2l6 2M4 14l2 5M11 12l6 1M20 9l2 6M2 23l6-1M12 20l3 4M19 19l5 3'/%3E%3C/g%3E%3C/svg%3E");
+  border: 0.25rem solid #d4e8d4;
+  outline: var(--px) solid #b8d0b8;
+}
+
+.paper.plain {
+  border: 0.1875rem solid #c8cce6;
+}
+
+.paper-title {
+  margin: 0 0 0.25rem;
+  font-size: 2.5rem;
+  font-weight: normal;
+  line-height: 1.1;
+  color: #000;
+}
+
+.paper-title.light {
+  font-size: 2.125rem;
+  color: #6a6a6a;
+}
+
+/* Fields written on the paper: an underline, no box. */
+.uline .field,
+.field.uline {
+  background: transparent;
+  border: none;
+  border-bottom: var(--px) solid #333333;
+}
+
+.uline .combo-arrow {
+  background: transparent;
+  border: none;
+  border-bottom: var(--px) solid #333333;
+}
+
+.uline .field:focus,
+.field.uline:focus {
+  background: #ffffff;
+  box-shadow: none;
+  border-bottom-color: var(--focus);
+}
+
+/* ---------- Enter Bills ---------- */
+
+.bill13-kind {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  max-width: 58rem;
+  font-size: 0.8125rem;
+  color: var(--caption);
+  text-transform: uppercase;
+}
+
+.bill13-kind label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.bill13-kind .spacer {
+  flex: 1;
+}
+
+.bill13-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(12rem, 24rem) 1fr max-content minmax(9rem, 13rem);
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.bill13-grid .cap-left {
+  text-align: left;
+}
+
+.bill13-grid .addr-box {
+  height: 6.5rem;
+  background: #ffffff;
+  border: none;
+}
+
+.bill13-grid .top {
+  align-self: start;
+  padding-top: 0.25rem;
+}
+
+.bill13-grid .wide {
+  grid-column: 2 / -1;
+}
+
+.bill13-grid .amt {
+  font-weight: normal;
+}
+
+.f13-note {
+  font-size: 0.875rem;
+  color: var(--dark);
+}
+
+/* ---------- Write Checks ---------- */
+
+.chk13-bank {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 58rem;
+}
+
+.chk13-bank .combo {
+  width: 17rem;
+}
+
+.chk13-bank .endbal {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 2rem;
+}
+
+.chk13-bank .endbal b {
+  font-size: 1.25rem;
+}
+
+.chk13-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content 11rem;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.chk13-grid .addr-box {
+  height: 6rem;
+  max-width: 16rem;
+  background: #ffffff;
+  border: none;
+}
+
+.chk13-words {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  min-height: 1.75rem;
+  border-bottom: var(--px) solid #333333;
+}
+
+.chk13-words span:first-child {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.chk13-words span:last-child {
+  font-size: 0.75rem;
+  color: var(--caption);
+  transform: translateY(1.25rem);
+}
+
+.chk13-grid .span3 {
+  grid-column: 2 / -1;
+}
+
+.chk13-amount {
+  font-weight: bold;
+}
+
+.chk13-amount.mismatch,
+.bill13-grid .mismatch {
+  color: var(--error);
+}
+
+/* ---------- Make Deposits, Transfer Funds (no ribbon) ---------- */
+
+.minitb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem 0.375rem;
+  background: linear-gradient(#f7f7f7, #e8e8e8);
+  border-bottom: var(--px) solid #c8c8c8;
+  user-select: none;
+}
+
+.minitb-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.875rem;
+  color: #222;
+  background: transparent;
+  border: var(--px) solid transparent;
+  border-radius: 0.1875rem;
+  cursor: default;
+}
+
+.minitb-btn:hover:not(:disabled) {
+  background: var(--hot);
+  border-color: var(--hot-border);
+}
+
+.minitb-btn:disabled {
+  color: #a8a8a8;
+}
+
+.minitb-btn .rb-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.minitb-sep {
+  width: var(--px);
+  align-self: stretch;
+  margin: 0.125rem 0.25rem;
+  background: #c8c8c8;
+}
+
+.dep13-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dep13-head label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dep13-head .combo {
+  width: 10rem;
+}
+
+.dep13-head .memo {
+  width: 13rem;
+}
+
+.dep13-foot {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.dep13-cash {
+  display: grid;
+  grid-template-columns: 14rem 19rem 12rem;
+  gap: 0.25rem 1.5rem;
+  align-items: center;
+}
+
+.dep13-cash p {
+  grid-column: 1 / -1;
+  margin: 0 0 0.375rem;
+  max-width: 36rem;
+}
+
+.dep13-totals {
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: max-content 9rem;
+  gap: 2.5rem 1rem;
+  align-items: center;
+}
+
+.dep13-totals span:nth-child(even) {
+  text-align: right;
+  font-weight: bold;
+}
+
+.xfer13 {
+  max-width: 61rem;
+}
+
+.xfer13-grid {
+  display: grid;
+  grid-template-columns: 10rem max-content 18rem 1fr max-content 12rem;
+  gap: 0.75rem 0.5rem;
+  align-items: center;
+}
+
+.xfer13-grid .cap-left {
+  font-size: 0.8125rem;
+}
+
+.xfer13-grid .readout13 {
+  padding: 0.25rem 0.375rem;
+  background: #ffffff;
+}
+
+.xfer13-memo {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.xfer13 + .f13-buttons {
+  max-width: 61rem;
+}
+
+/* ---------- Make General Journal Entries ---------- */
+
+.je13-head {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.je13-head label {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.je13-head .num-field {
+  width: 9rem;
+}
+
+/* ---------- Pay Bills and Create Statements (classic dialogs, 2013 headings) ---------- */
+
+.sec13 {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  border: var(--px) solid #d8d8d8;
+}
+
+.sec13 > legend {
+  padding: 0 0.25rem;
+  margin-left: -0.75rem;
+  font-size: 0.875rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+@media (max-width: 40rem) {
+  .bill13-grid,
+  .chk13-grid,
+  .xfer13-grid,
+  .dep13-cash {
+    grid-template-columns: max-content 1fr;
+  }
+  .bill13-grid .wide,
+  .chk13-grid .span3 {
+    grid-column: auto;
+  }
+}
+
 @media (max-width: 40rem) {
   .sf13-top,
   .sf13-foot,
@@ -521,4 +946,351 @@
   .f13-band {
     flex-wrap: wrap;
   }
+}
+
+/* ---------- Change Item Prices ---------- */
+
+.cip .f13-page {
+  gap: 0.375rem;
+}
+
+.cip-type {
+  font-size: 0.9375rem;
+}
+
+.cip-select {
+  width: 12rem;
+}
+
+.cip-checks {
+  display: flex;
+  gap: 3rem;
+}
+
+.cip-adjust {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: #555555;
+}
+
+.cip-amt {
+  width: 5.5rem;
+}
+
+.cip-round {
+  width: 10rem;
+}
+
+.cip-adjust .spacer {
+  flex: 1;
+}
+
+.line-grid tr.inactive td.cell-text {
+  color: var(--grey-text);
+}
+
+.bill13-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-self: start;
+}
+
+.bill13-labels > * {
+  height: 1.875rem;
+  display: flex;
+  align-items: center;
+}
+
+.bill13-terms {
+  max-width: 8rem;
+}
+
+.bill13-fill {
+  grid-column: span 3;
+}
+
+.xfer13-form {
+  background: #eeeeee;
+}
+
+.xfer13-page {
+  align-items: flex-start;
+}
+
+.xfer13-page > .paper {
+  background-color: #f7f7fc;
+  width: 100%;
+}
+
+.xfer13-grid .paper-title {
+  grid-column: 1 / 3;
+}
+
+.xfer13-date {
+  grid-column: 3 / 7;
+  width: 11rem;
+}
+
+.xfer13-memo .field {
+  flex: 1;
+}
+
+.xfer13-page > .f13-buttons {
+  width: 100%;
+  max-width: 61rem;
+}
+
+/* ---------- Pay Bills ---------- */
+
+.pb .f13-page {
+  gap: 0.75rem;
+}
+
+.pb13-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.pb13-top {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.pb13-show {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pb13-show .date-field {
+  width: 8.5rem;
+  margin-left: 1.5rem;
+}
+
+.pb13-filters {
+  display: grid;
+  grid-template-columns: max-content 14rem;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  margin-left: 15rem;
+}
+
+.pb13-filters > label {
+  text-align: right;
+}
+
+.pb13-grid {
+  flex: 1 1 auto;
+  min-height: 9rem;
+  max-height: none;
+}
+
+.win:not(.max) .pb13-grid {
+  max-height: 18rem;
+}
+
+/* The figures QuickBooks works out are on grey; the Amt. To Pay column is the one she types in. */
+.pb13-row td.cell-text,
+.pb13-row td.rcv-check {
+  background: #ececec;
+}
+
+.line-grid tbody tr.pb13-row:nth-child(even) td.cell-text,
+.line-grid tbody tr.pb13-row:nth-child(even) td.rcv-check {
+  background: #dfe5ee;
+}
+
+.pb13-rowbtns {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pb13-info,
+.pb13-pay {
+  max-width: 61rem;
+}
+
+.pb13-info-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(12rem, 1fr) max-content minmax(6rem, 8rem) max-content 5rem;
+  gap: 0.25rem 1rem;
+}
+
+.pb13-info-grid b {
+  text-align: right;
+  font-weight: bold;
+  font-size: 0.875rem;
+}
+
+.pb13-info-btns {
+  display: flex;
+  gap: 14rem;
+  padding-top: 0.375rem;
+}
+
+.pb13-info-btns .btn {
+  min-width: 8.5rem;
+}
+
+.pb13-pay-grid {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+.pb13-pay-grid .cap > span {
+  font-size: 0.9375rem;
+}
+
+.pb13-pay-grid .cap .field,
+.pb13-pay-grid .cap .date-field {
+  width: 10rem;
+}
+
+.pb13-printopts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 1rem;
+}
+
+.pb13-printopts .num-field {
+  width: 7rem;
+  margin-left: 0.5rem;
+}
+
+.pb13-acct {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pb13-acct .combo {
+  width: 18rem;
+}
+
+.pb13-bal {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+/* ---------- Create Statements ---------- */
+
+.stmt13 .f13-page {
+  gap: 0.75rem;
+}
+
+.stmt13-cols {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  max-width: 62rem;
+}
+
+.stmt13-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.stmt13-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stmt13-grid {
+  display: grid;
+  grid-template-columns: max-content 9rem max-content 9rem;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.stmt13-who {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stmt13-one {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stmt13-one .combo {
+  width: 15rem;
+}
+
+.stmt13-note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--dark);
+}
+
+.stmt13-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 62rem;
+}
+
+.stmt13-buttons .spacer {
+  flex: 1;
+}
+
+.stmt13-buttons .gap {
+  width: 4rem;
+}
+
+.pb13-printopts .check {
+  white-space: nowrap;
+}
+
+.pb13-filters {
+  margin-left: 8rem;
+}
+
+.xfer13-grid {
+  grid-template-columns: 7rem max-content 18rem 1fr max-content 9rem;
+}
+
+.xfer13-grid .readout13:empty {
+  background: transparent;
+}
+
+.cip .field.cip-select {
+  width: 12rem;
+}
+
+.cip .field.cip-amt {
+  width: 5.5rem;
+}
+
+.cip .field.cip-round {
+  width: 10rem;
+}
+
+.dep13-head .field.memo {
+  width: 13rem;
+}
+
+.pb13-filters .field {
+  width: 14rem;
+}
+
+.je13-head .field.num-field {
+  width: 9rem;
 }

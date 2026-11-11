@@ -5,6 +5,7 @@ import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
+import { inactiveMark, Indented, ListFooter, visibleRows } from './ListWindow';
 
 /** Balance including subaccounts, as the QuickBooks chart of accounts shows it. */
 function rolledUp(accounts: Account[]): Map<number, number> {
@@ -20,18 +21,20 @@ function rolledUp(accounts: Account[]): Map<number, number> {
   return total;
 }
 
+/** Lists > Chart of Accounts (Ctrl+A), laid out as QuickBooks 2013 shows it. */
 export function ChartOfAccounts({ winId }: WinProps) {
   const desk = useDesktop();
   const { data, error } = useData<Account[]>('/api/accounts');
-  const accounts = data ?? [];
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const accounts = useMemo(() => visibleRows(data ?? [], includeInactive), [data, includeInactive]);
   const [selected, setSelected] = useState<number | null>(null);
-  const totals = useMemo(() => rolledUp(accounts), [accounts]);
+  const totals = useMemo(() => rolledUp(data ?? []), [data]);
 
   // Keep a valid selection as the list reloads.
   useEffect(() => {
-    if (!data || data.length === 0) return;
-    if (selected === null || !data.some((a) => a.id === selected)) setSelected(data[0].id);
-  }, [data, selected]);
+    if (accounts.length === 0) return;
+    if (selected === null || !accounts.some((a) => a.id === selected)) setSelected(accounts[0].id);
+  }, [accounts, selected]);
 
   const current = accounts.find((a) => a.id === selected) ?? null;
 
@@ -62,29 +65,31 @@ export function ChartOfAccounts({ winId }: WinProps) {
     },
     register: () => openRegister(current),
   };
+  const quickReport = current ? () => openQuickReport(desk, { account_id: current.id }) : undefined;
   useWindowCommands(winId, {
     new: cmds.new,
     edit: cmds.edit,
     delete: () => void cmds.delete(),
     register: cmds.register,
-    quickReport: current ? () => openQuickReport(desk, { account_id: current.id }) : undefined,
+    quickReport,
   });
 
   const columns: Column<Account>[] = [
+    ...(includeInactive ? [inactiveMark<Account>()] : []),
     {
       key: 'name',
       title: 'Name',
       render: (a) => (
-        <span style={{ paddingLeft: `${a.depth * 1.25}em` }} className={a.inactive ? 'inactive' : undefined}>
+        <Indented depth={a.depth} bullet>
           {a.name}
-        </span>
+        </Indented>
       ),
     },
     { key: 'type', title: 'Type', width: '13rem', render: (a) => accountType(a.type).label },
     {
       key: 'balance',
-      title: 'Balance',
-      width: '9rem',
+      title: 'Balance Total',
+      width: '10rem',
       align: 'right',
       render: (a) => {
         const t = accountType(a.type);
@@ -95,6 +100,7 @@ export function ChartOfAccounts({ winId }: WinProps) {
     },
   ];
 
+  const isBank = current?.type === 'BANK';
   return (
     <div className="list-window">
       {error && <div className="msg-strip error">{error}</div>}
@@ -105,28 +111,39 @@ export function ChartOfAccounts({ winId }: WinProps) {
         selected={selected}
         onSelect={setSelected}
         onActivate={(a) => openRegister(a)}
+        rowClass={(a) => (a.inactive ? 'inactive' : '')}
         emptyText={data ? 'There are no accounts.' : 'Loading...'}
         label="Chart of Accounts"
       />
-      <div className="button-row">
-        <span className="group-label">Account:</span>
-        <button type="button" className="btn" onClick={cmds.new}>
-          New
-        </button>
-        <button type="button" className="btn" disabled={!current} onClick={cmds.edit}>
-          Edit
-        </button>
-        <button type="button" className="btn" disabled={!current} onClick={() => void cmds.delete()}>
-          Delete
-        </button>
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={!current} onClick={() => current && openQuickReport(desk, { account_id: current.id })} title="Ctrl+Q">
-          QuickReport
-        </button>
-        <button type="button" className="btn" disabled={!current} onClick={cmds.register}>
-          Use Register
-        </button>
-      </div>
+      <ListFooter
+        includeInactive={includeInactive}
+        onIncludeInactive={setIncludeInactive}
+        menus={[
+          {
+            label: 'Account',
+            items: [
+              { label: '&New', shortcut: 'Ctrl+N', action: cmds.new },
+              { label: '&Edit Account', shortcut: 'Ctrl+E', action: current ? cmds.edit : undefined },
+              { label: '&Delete Account', shortcut: 'Ctrl+D', action: current ? () => void cmds.delete() : undefined },
+            ],
+          },
+          {
+            label: 'Activities',
+            items: [
+              { label: '&Use Register', shortcut: 'Ctrl+R', action: current && accountType(current.type).balanceSheet ? cmds.register : undefined },
+              'sep',
+              { label: '&Write Checks', shortcut: 'Ctrl+W', action: () => desk.open('check', isBank && current ? { id: null, accountId: current.id } : { id: null }) },
+              { label: 'Make &Deposits', action: () => desk.open('deposit', { id: null }) },
+              { label: '&Transfer Funds', action: () => desk.open('transfer', { id: null }) },
+              { label: 'Make General &Journal Entries', action: () => desk.open('journal', { id: null }) },
+            ],
+          },
+          {
+            label: 'Reports',
+            items: [{ label: `&QuickReport: ${current?.full_name ?? ''}`, shortcut: 'Ctrl+Q', action: quickReport }],
+          },
+        ]}
+      />
     </div>
   );
 }

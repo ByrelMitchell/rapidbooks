@@ -9,7 +9,8 @@ import { useDesktop, useWindowCommands } from '../shell/desktop';
 import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
-import { EndingBalance, firstBankId } from './checkShared';
+import { firstBankId, naturalBalance } from './checkShared';
+import { MiniButton, MiniToolbar, SaveButtons } from './Ribbon';
 import './sales.css';
 import './banking.css';
 
@@ -257,7 +258,17 @@ export function TransferFunds({ winId, props }: WinProps) {
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || loading) return;
-    const fn = e.code === 'KeyP' ? () => void go('prev') : e.code === 'KeyX' ? () => void go('next') : undefined;
+    const focus = (id: string) => () => document.getElementById(id)?.focus();
+    const fn =
+      e.code === 'KeyP'
+        ? () => void go('prev')
+        : e.code === 'KeyX'
+          ? () => void go('next')
+          : e.code === 'KeyM'
+            ? focus(`${winId}-from`)
+            : e.code === 'KeyT'
+              ? focus(`${winId}-to`)
+              : undefined;
     if (!fn) return;
     e.preventDefault();
     fn();
@@ -269,67 +280,77 @@ export function TransferFunds({ winId, props }: WinProps) {
   }, [accounts, form.fromId, form.toId]);
   const dis = loading;
 
+  const balanceOf = (id: number | null) => {
+    const a = id !== null ? accounts?.find((x) => x.id === id) : undefined;
+    return a ? formatMoney(naturalBalance(a)) : '';
+  };
+
   return (
-    <div className="form-window bk-form" ref={rootRef} onKeyDown={onKeyDown}>
-      <div className="form-toolbar">
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('prev')} title="Alt+P">
-          <Mnemonic label="&Previous" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('next')} title="Alt+X">
-          <Mnemonic label="Ne&xt" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={journal} title="Ctrl+Y">
-          Journal
-        </button>
-      </div>
-      {error && <div className="msg-strip error">{error}</div>}
-      <h2 className="bk-title">Transfer Funds Between Accounts</h2>
-      <div className="bk-transfer">
-        <label htmlFor={`${winId}-date`}>Date</label>
-        <div>
-          <DateField id={`${winId}-date`} data-field="date" value={form.date} disabled={dis} onChange={(date) => set({ date })} />
+    <div className="f13 xfer13-form" ref={rootRef} onKeyDown={onKeyDown}>
+      <MiniToolbar>
+        <MiniButton icon="prev" label="&Previous" keys="Alt+P" disabled={dis} onClick={() => void go('prev')} />
+        <MiniButton icon="next" label="Ne&xt" keys="Alt+X" disabled={dis} onClick={() => void go('next')} />
+        <MiniButton icon="save" label="Save" keys="Ctrl+Enter" disabled={dis} onClick={() => void save('stay')} />
+        <span className="minitb-sep" />
+        <MiniButton icon="journal" label="Journal" keys="Ctrl+Y" disabled={dis || txnId === null} onClick={journal} />
+      </MiniToolbar>
+      <div className="f13-page xfer13-page">
+        {error && <div className="msg-strip error">{error}</div>}
+        <div className="paper plain xfer13">
+          <div className="xfer13-grid">
+            <h2 className="paper-title light">Transfer Funds</h2>
+            <label className="cap xfer13-date" htmlFor={`${winId}-date`}>
+              <span className="cap-text">Date</span>
+              <DateField id={`${winId}-date`} data-field="date" value={form.date} disabled={dis} onChange={(date) => set({ date })} />
+            </label>
+
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-from`}>
+              <Mnemonic label="Transfer Funds Fro&m" />
+            </label>
+            <Combo
+              id={`${winId}-from`}
+              options={options}
+              value={form.fromId}
+              onChange={(fromId) => set({ fromId })}
+              disabled={dis}
+              {...accountQuickFill(desk, { type: 'BANK' })}
+            />
+            <span />
+            <span className="cap-left">Account Balance</span>
+            <span className="readout13">{balanceOf(form.fromId)}</span>
+
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-to`}>
+              <Mnemonic label="Transfer Funds &To" />
+            </label>
+            <Combo
+              id={`${winId}-to`}
+              options={options}
+              value={form.toId}
+              onChange={(toId) => set({ toId })}
+              disabled={dis}
+              {...accountQuickFill(desk, { type: 'BANK' })}
+            />
+            <span />
+            <span className="cap-left">{form.toId !== null ? 'Account Balance' : ''}</span>
+            <span className="readout13">{balanceOf(form.toId)}</span>
+
+            <span />
+            <span />
+            <span />
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-amt`}>
+              Transfer Amount
+            </label>
+            <AmountField id={`${winId}-amt`} className="bk-xfer-amt" value={form.amount} disabled={dis} onChange={(amount) => set({ amount })} />
+          </div>
+          <label className="xfer13-memo" htmlFor={`${winId}-memo`}>
+            <span>Memo</span>
+            <input id={`${winId}-memo`} className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
+          </label>
         </div>
-        <span />
-        <label htmlFor={`${winId}-from`}>Transfer Funds From</label>
-        <Combo
-          id={`${winId}-from`}
-          options={options}
-          value={form.fromId}
-          onChange={(fromId) => set({ fromId })}
-          disabled={dis}
-          {...accountQuickFill(desk, { type: 'BANK' })}
-        />
-        <EndingBalance accounts={accounts} id={form.fromId} />
-        <label htmlFor={`${winId}-to`}>Transfer Funds To</label>
-        <Combo
-          id={`${winId}-to`}
-          options={options}
-          value={form.toId}
-          onChange={(toId) => set({ toId })}
-          disabled={dis}
-          {...accountQuickFill(desk, { type: 'BANK' })}
-        />
-        <EndingBalance accounts={accounts} id={form.toId} />
-        <label htmlFor={`${winId}-amt`}>Transfer Amount $</label>
-        <div>
-          <AmountField id={`${winId}-amt`} className="bk-xfer-amt" value={form.amount} disabled={dis} onChange={(amount) => set({ amount })} />
-        </div>
-        <span />
-        <label htmlFor={`${winId}-memo`}>Memo</label>
-        <input id={`${winId}-memo`} className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
-        <span />
-      </div>
-      <div className="button-row">
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
-          <Mnemonic label="&Save && New" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
-          {txnId === null ? 'Clear' : 'Revert'}
-        </button>
+        <SaveButtons disabled={dis} saved={txnId !== null} onSave={(m) => void save(m)} onClear={() => void clearOrRevert()} />
       </div>
     </div>
   );

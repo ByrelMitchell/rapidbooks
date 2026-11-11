@@ -21,6 +21,7 @@ import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { adjacentTxn, anyNameQuickFill, PayMethodField } from './receivablesShared';
 import './receivables.css';
+import { MiniButton, MiniToolbar, SaveButtons } from './Ribbon';
 
 interface Line {
   key: number;
@@ -404,12 +405,42 @@ export function MakeDeposits({ winId, props }: WinProps) {
     />
   );
 
+  // Alt+P Previous, Alt+X Next, Alt+T the Deposit To field (letters no menu uses).
+  const onBarKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const fn =
+      e.code === 'KeyP'
+        ? () => void go('prev')
+        : e.code === 'KeyX'
+          ? () => void go('next')
+          : e.code === 'KeyT'
+            ? () => rootRef.current?.querySelector<HTMLElement>('[data-field="bank"]')?.focus()
+            : undefined;
+    if (!fn) return;
+    e.preventDefault();
+    fn();
+  };
+
   return (
-    <div className="form-window" ref={rootRef}>
-      <div className="form-header">
-        <label>
-          Deposit To
-          <span className="bank-combo">
+    <div className="f13" ref={rootRef}>
+      <MiniToolbar>
+        <MiniButton icon="prev" label="&Previous" keys="Alt+P" disabled={loading} onClick={() => void go('prev')} />
+        <MiniButton icon="next" label="Ne&xt" keys="Alt+X" disabled={loading} onClick={() => void go('next')} />
+        <MiniButton icon="save" label="Save" keys="Ctrl+Enter" disabled={loading} onClick={() => void save('stay')} />
+        <span className="minitb-sep" />
+        <MiniButton icon="payments" label="Payments" disabled={loading} onClick={() => void reopenPayments()} />
+        <MiniButton
+          icon="journal"
+          label="Journal"
+          keys="Ctrl+Y"
+          disabled={loading || txnId === null}
+          onClick={() => txnId !== null && desk.open('txnjournal', { txnId })}
+        />
+      </MiniToolbar>
+      <div className="f13-page" onKeyDown={onBarKey}>
+        <div className="dep13-head">
+          <label>
+            <Mnemonic label="Deposit &To" />
             <Combo
               options={bankOptions}
               value={form.bankId}
@@ -418,170 +449,150 @@ export function MakeDeposits({ winId, props }: WinProps) {
               disabled={loading}
               {...accountQuickFill(desk, { type: 'BANK' })}
             />
-          </span>
-        </label>
-        <label>
-          Date
-          <DateField value={form.date} onChange={(date) => edit((f) => ({ ...f, date }))} disabled={loading} />
-        </label>
-        <label className="grow">
-          Memo
-          <input
-            className="field"
-            value={form.memo}
-            disabled={loading}
-            onChange={(e) => {
-              const memo = e.target.value;
-              edit((f) => ({ ...f, memo }));
-            }}
-          />
-        </label>
-      </div>
-      <div className="hint">Click Payments to choose payments from Undeposited Funds. Fill in other deposits below them.</div>
-      {error && <div className="msg-strip error">{error}</div>}
-      <div className="grid-wrap">
-        <table className="line-grid">
-          <colgroup>
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '20%' }} />
-            <col />
-            <col style={{ width: '7rem' }} />
-            <col style={{ width: '8rem' }} />
-            <col style={{ width: '8rem' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Received From</th>
-              <th>From Account</th>
-              <th>Memo</th>
-              <th>Chk No.</th>
-              <th>Pmt Meth.</th>
-              <th className="al-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody onKeyDown={onGridKey}>
-            {form.payments.map((p, i) => (
-              <tr key={`p${p.id}`} className="ro-row" onFocus={() => (curRow.current = i)}>
-                <td>{ro(i, 'name', p.full_name)}</td>
-                <td>{ro(i, 'account', ufName)}</td>
-                <td>{ro(i, 'memo', p.memo)}</td>
-                <td>{ro(i, 'ref', p.ref_no)}</td>
-                <td>{ro(i, 'method', p.pay_method)}</td>
-                <td>{ro(i, 'amount', formatMoney(p.amount), true)}</td>
+          </label>
+          <label>
+            Date
+            <DateField value={form.date} onChange={(date) => edit((f) => ({ ...f, date }))} disabled={loading} />
+          </label>
+          <label>
+            Memo
+            <input
+              className="field memo"
+              value={form.memo}
+              disabled={loading}
+              onChange={(e) => {
+                const memo = e.target.value;
+                edit((f) => ({ ...f, memo }));
+              }}
+            />
+          </label>
+        </div>
+        <div>Click Payments to select customer payments that you have received. List any other amounts to deposit below.</div>
+        {error && <div className="msg-strip error">{error}</div>}
+        <div className="grid-wrap">
+          <table className="line-grid">
+            <colgroup>
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '13%' }} />
+              <col />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '17%' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Received From</th>
+                <th>From Account</th>
+                <th>Memo</th>
+                <th>Chk No.</th>
+                <th>Pmt Meth.</th>
+                <th className="al-right">Amount</th>
               </tr>
-            ))}
-            {form.lines.map((l, j) => {
-              const i = npay + j;
-              return (
-                <tr key={l.key} onFocus={() => (curRow.current = i)}>
-                  <td>
-                    <Combo
-                      options={nameOptions}
-                      value={l.nameId}
-                      onChange={(nameId) => editLine(j, { nameId })}
-                      data-row={i}
-                      data-col="name"
-                      aria-label={`Received from, line ${i + 1}`}
-                      disabled={loading}
-                      {...anyNameQuickFill(desk)}
-                    />
-                  </td>
-                  <td>
-                    <Combo
-                      options={accountOptions}
-                      value={l.accountId}
-                      onChange={(accountId) => editLine(j, { accountId })}
-                      data-row={i}
-                      data-col="account"
-                      aria-label={`From account, line ${i + 1}`}
-                      disabled={loading}
-                      {...accountQuickFill(desk)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="field"
-                      value={l.memo}
-                      data-row={i}
-                      data-col="memo"
-                      aria-label={`Memo, line ${i + 1}`}
-                      disabled={loading}
-                      onChange={(e) => editLine(j, { memo: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="field"
-                      value={l.refNo}
-                      maxLength={20}
-                      data-row={i}
-                      data-col="ref"
-                      aria-label={`Check number, line ${i + 1}`}
-                      disabled={loading}
-                      onChange={(e) => editLine(j, { refNo: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <PayMethodField
-                      value={l.method}
-                      extra={methods}
-                      onChange={(method) => editLine(j, { method })}
-                      data-row={i}
-                      data-col="method"
-                      aria-label={`Payment method, line ${i + 1}`}
-                      disabled={loading}
-                    />
-                  </td>
-                  <td>
-                    <AmountField
-                      value={l.amount}
-                      onChange={(amount) => editLine(j, { amount })}
-                      data-row={i}
-                      data-col="amount"
-                      aria-label={`Amount, line ${i + 1}`}
-                      disabled={loading}
-                    />
-                  </td>
+            </thead>
+            <tbody onKeyDown={onGridKey}>
+              {form.payments.map((p, i) => (
+                <tr key={`p${p.id}`} className="ro-row" onFocus={() => (curRow.current = i)}>
+                  <td>{ro(i, 'name', p.full_name)}</td>
+                  <td>{ro(i, 'account', ufName)}</td>
+                  <td>{ro(i, 'memo', p.memo)}</td>
+                  <td>{ro(i, 'ref', p.ref_no)}</td>
+                  <td>{ro(i, 'method', p.pay_method)}</td>
+                  <td>{ro(i, 'amount', formatMoney(p.amount), true)}</td>
                 </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={5} className="al-right total-label">
-                Deposit Total
-              </td>
-              <td className="al-right total">{formatMoney(total)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="button-row">
-        <button type="button" className="btn" disabled={loading} onClick={() => void go('prev')}>
-          Previous
-        </button>
-        <button type="button" className="btn" disabled={loading || txnId === null} onClick={() => void go('next')}>
-          Next
-        </button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void reopenPayments()}>
-          Payments...
-        </button>
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={loading} onClick={() => void save('close')}>
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={loading} onClick={() => void save('new')}>
-          <Mnemonic label="&Save && New" />
-        </button>
-        {txnId === null ? (
-          <button type="button" className="btn" disabled={loading} onClick={clear}>
-            Clear
-          </button>
-        ) : (
-          <button type="button" className="btn" disabled={loading} onClick={() => void remove()} title="Ctrl+D">
-            Delete
-          </button>
-        )}
+              ))}
+              {form.lines.map((l, j) => {
+                const i = npay + j;
+                return (
+                  <tr key={l.key} onFocus={() => (curRow.current = i)}>
+                    <td>
+                      <Combo
+                        options={nameOptions}
+                        value={l.nameId}
+                        onChange={(nameId) => editLine(j, { nameId })}
+                        data-row={i}
+                        data-col="name"
+                        aria-label={`Received from, line ${i + 1}`}
+                        disabled={loading}
+                        {...anyNameQuickFill(desk)}
+                      />
+                    </td>
+                    <td>
+                      <Combo
+                        options={accountOptions}
+                        value={l.accountId}
+                        onChange={(accountId) => editLine(j, { accountId })}
+                        data-row={i}
+                        data-col="account"
+                        aria-label={`From account, line ${i + 1}`}
+                        disabled={loading}
+                        {...accountQuickFill(desk)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="field"
+                        value={l.memo}
+                        data-row={i}
+                        data-col="memo"
+                        aria-label={`Memo, line ${i + 1}`}
+                        disabled={loading}
+                        onChange={(e) => editLine(j, { memo: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="field"
+                        value={l.refNo}
+                        maxLength={20}
+                        data-row={i}
+                        data-col="ref"
+                        aria-label={`Check number, line ${i + 1}`}
+                        disabled={loading}
+                        onChange={(e) => editLine(j, { refNo: e.target.value })}
+                      />
+                    </td>
+                    <td>
+                      <PayMethodField
+                        value={l.method}
+                        extra={methods}
+                        onChange={(method) => editLine(j, { method })}
+                        data-row={i}
+                        data-col="method"
+                        aria-label={`Payment method, line ${i + 1}`}
+                        disabled={loading}
+                      />
+                    </td>
+                    <td>
+                      <AmountField
+                        value={l.amount}
+                        onChange={(amount) => editLine(j, { amount })}
+                        data-row={i}
+                        data-col="amount"
+                        aria-label={`Amount, line ${i + 1}`}
+                        disabled={loading}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="dep13-foot">
+          <div className="dep13-totals">
+            <span>Deposit Subtotal</span>
+            <span>{formatMoney(total)}</span>
+            <span>Deposit Total</span>
+            <span>{formatMoney(total)}</span>
+          </div>
+        </div>
+        <SaveButtons
+          disabled={loading}
+          saved={txnId !== null}
+          onSave={(m) => void save(m)}
+          onClear={txnId === null ? clear : () => void remove()}
+          clearLabel={txnId === null ? 'Clear' : 'Delete'}
+        />
       </div>
     </div>
   );

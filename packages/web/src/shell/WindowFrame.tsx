@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type PointerEve
 import { focusables } from '../util';
 import { useDesktop, type WinState } from './desktop';
 import type { WindowDef } from './registry';
+import { setViewPref, useViewPrefs } from './viewPrefs';
 
 function remPx(): number {
   return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -19,6 +20,10 @@ export function WindowFrame({
   children: ReactNode;
 }) {
   const desk = useDesktop();
+  const { maxWindows } = useViewPrefs();
+  const max = maxWindows && !!def.max;
+  const maxRef = useRef(max);
+  maxRef.current = max;
   const frameRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
@@ -37,7 +42,7 @@ export function WindowFrame({
     const deskEl = el?.parentElement;
     if (!el || !deskEl || typeof ResizeObserver === 'undefined') return;
     const fit = () => {
-      if (userMoved.current || drag.current) return;
+      if (maxRef.current || userMoved.current || drag.current) return;
       const rem = remPx();
       const overRight = el.offsetLeft + el.offsetWidth - deskEl.clientWidth;
       const overBottom = el.offsetTop + el.offsetHeight - deskEl.clientHeight;
@@ -94,7 +99,7 @@ export function WindowFrame({
   };
 
   const onTitleDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest('.win-close')) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest('.win-btn')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { px: e.clientX, py: e.clientY, x: win.x, y: win.y, rem: remPx() };
   };
@@ -113,14 +118,18 @@ export function WindowFrame({
   return (
     <div
       ref={frameRef}
-      className={`win${active ? ' active' : ''}`}
-      style={{
-        left: `${win.x}rem`,
-        top: `${win.y}rem`,
-        width: `${def.width}rem`,
-        height: def.height ? `${def.height}rem` : undefined,
-        zIndex: win.z,
-      }}
+      className={`win${active ? ' active' : ''}${max ? ' max' : ''}`}
+      style={
+        max
+          ? { zIndex: win.z }
+          : {
+              left: `${win.x}rem`,
+              top: `${win.y}rem`,
+              width: `${def.width}rem`,
+              height: def.height ? `${def.height}rem` : undefined,
+              zIndex: win.z,
+            }
+      }
       onPointerDownCapture={() => desk.focus(win.id)}
       onKeyDown={onKeyDown}
       onFocus={(e) => {
@@ -129,6 +138,7 @@ export function WindowFrame({
       role="dialog"
       aria-label={win.title}
     >
+      {!max && (
       <div
         className="win-title"
         onPointerDown={onTitleDown}
@@ -139,9 +149,21 @@ export function WindowFrame({
         onMouseDown={(e) => e.preventDefault()}
       >
         <span className="win-title-text">{win.title}</span>
+        {def.max && (
+          <button
+            type="button"
+            className="win-btn win-maxbtn"
+            tabIndex={-1}
+            title="Maximize (View > Maximize Windows)"
+            aria-label="Maximize"
+            onClick={() => setViewPref('maxWindows', true)}
+          >
+            □
+          </button>
+        )}
         <button
           type="button"
-          className="win-close"
+          className="win-btn win-close"
           tabIndex={-1}
           title="Close (Esc)"
           aria-label="Close"
@@ -150,6 +172,7 @@ export function WindowFrame({
           ×
         </button>
       </div>
+      )}
       <div ref={bodyRef} className="win-body">
         {children}
       </div>

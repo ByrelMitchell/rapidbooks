@@ -923,6 +923,12 @@ export const ItemInput = z.object({
 });
 export type ItemInput = z.infer<typeof ItemInput>;
 
+/** Lists > Item List > Activities > Change Item Prices: new sales prices (cents, up to 3 decimals). */
+export const ItemPricesInput = z.object({
+  prices: z.array(z.object({ id: z.number().int(), rate: Rate.refine((n) => n >= 0, { message: 'A price cannot be negative.' }) })).min(1),
+});
+export type ItemPricesInput = z.infer<typeof ItemPricesInput>;
+
 export interface GroupMember {
   item_id: number;
   qty: number;

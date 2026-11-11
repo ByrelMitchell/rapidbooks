@@ -1,6 +1,7 @@
 import {
   AccountInput,
   ItemInput,
+  ItemPricesInput,
   NAME_KINDS,
   NameInput,
   TermsInput,
@@ -18,7 +19,7 @@ import type { DB } from './db';
 import { AppError } from './errors';
 import { createAccount, deleteAccount, listAccounts, updateAccount } from './ledger/accounts';
 import { deleteTxn, getRegister, getTxn, nextNum, saveTxn, setCleared } from './ledger/posting';
-import { createItem, deleteItem, getItem, listItems, updateItem } from './lists/items';
+import { changeItemPrices, createItem, deleteItem, getItem, listItems, updateItem } from './lists/items';
 import { createName, deleteName, getName, listNames, updateName } from './lists/names';
 import { createTerms, deleteTerms, getTerms, listTerms, updateTerms } from './lists/terms';
 import type { MailerFactory } from './mail/send';
@@ -122,6 +123,7 @@ export function buildApp(db: DB, opts: AppOptions = {}) {
 
   // Items
   app.get('/api/items', () => listItems(db));
+  app.post('/api/items/prices', (req) => ({ changed: changeItemPrices(db, ItemPricesInput.parse(req.body)) }));
   app.get('/api/items/:id', (req) => getItem(db, Id.parse(req.params).id));
   app.post('/api/items', (req) => ({ id: createItem(db, ItemInput.parse(req.body)) }));
   app.put('/api/items/:id', (req) => {

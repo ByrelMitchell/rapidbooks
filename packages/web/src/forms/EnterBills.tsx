@@ -43,6 +43,7 @@ import {
 } from './purchaseShared';
 import './sales.css';
 import './purchases.css';
+import { ExpItemTabs, Ribbon, RibbonBig, RibbonGroup, RibbonStart, SaveButtons } from './Ribbon';
 
 interface Form {
   credit: boolean;
@@ -214,7 +215,7 @@ export function EnterBills({ winId, props }: WinProps) {
   const termsFor = (id: number | null) => (id !== null ? terms?.find((t) => t.id === id) ?? null : null);
 
   /** Receive against open purchase orders: ask, let her choose, copy their lines to the Items tab. */
-  const offerPurchaseOrders = async (vendorId: number) => {
+  const offerPurchaseOrders = async (vendorId: number, ask = true) => {
     let open: OpenPurchaseOrder[];
     try {
       open = await api.get<OpenPurchaseOrder[]>(`/api/purchase-orders/open?vendor_id=${vendorId}`);
@@ -222,8 +223,12 @@ export function EnterBills({ winId, props }: WinProps) {
       return;
     }
     const still = () => formRef.current.vendorId === vendorId && !formRef.current.credit && txnIdRef.current === null;
-    if (open.length === 0 || !still()) return;
-    const yes = await desk.confirm('Open purchase orders exist for this vendor. Do you want to receive against one or more of these orders?', {
+    if (!still()) return;
+    if (open.length === 0) {
+      if (!ask) desk.setStatus('This vendor has no open purchase orders.');
+      return;
+    }
+    const yes = !ask || await desk.confirm('Open purchase orders exist for this vendor. Do you want to receive against one or more of these orders?', {
       title: 'Open POs Exist',
     });
     if (!yes || !still()) return;
@@ -269,6 +274,31 @@ export function EnterBills({ winId, props }: WinProps) {
     const f = formRef.current;
     const tid = credit ? null : vendors?.find((x) => x.id === f.vendorId)?.terms_id ?? null;
     set({ credit, poIds: [], termsId: tid, dueDate: dueDate(termsFor(tid), f.date) });
+  };
+
+  /** Ribbon > Clear Splits: empty the Expenses and Items lines. */
+  const clearSplits = () => {
+    commitActiveField({ quiet: true });
+    set({ expenses: padExp([], MIN_ROWS), items: padLines([], MIN_ROWS) });
+  };
+
+  /** Ribbon > Create a Copy: the same vendor and lines as a new, unsaved bill. */
+  const copyDoc = async () => {
+    if (busy.current || loading) return;
+    busy.current = true;
+    try {
+      if (!(await askSave())) return;
+      const src = formRef.current;
+      setTxnId(null);
+      setDoc(null);
+      version.current = undefined;
+      setError(null);
+      setForm({ ...src, refNo: '', poIds: [] });
+      snapshot.current = serialize(newForm(src.credit));
+      desk.setStatus(`This is a copy. Save it to record a new ${noun()}.`);
+    } finally {
+      busy.current = false;
+    }
   };
 
   const recalculate = () => {
@@ -505,217 +535,222 @@ export function EnterBills({ winId, props }: WinProps) {
   const dis = loading;
   const credit = form.credit;
 
+  const vendorId = form.vendorId;
+  const mainTab = (
+    <>
+      <RibbonStart
+        disabled={dis}
+        onPrev={() => void go('prev')}
+        onNext={() => void go('next')}
+        onFind={() => desk.open('find')}
+        onNew={() => desk.run('new')}
+        onSave={() => void save('stay')}
+        onDelete={txnId !== null ? () => void remove() : undefined}
+        onCopy={() => void copyDoc()}
+      />
+      <RibbonGroup>
+        <RibbonBig
+          icon="selectpo"
+          label={'Select\nPO'}
+          disabled={dis || credit || vendorId === null || txnId !== null}
+          onClick={() => vendorId !== null && void offerPurchaseOrders(vendorId, false)}
+        />
+        <RibbonBig icon="clearsplits" label={'Clear\nSplits'} disabled={dis} onClick={clearSplits} />
+        <RibbonBig icon="recalc" label="Recalculate" keys="Alt+T" disabled={dis} onClick={recalculate} />
+        <RibbonBig icon="paybill" label={'Pay\nBill'} disabled={dis || credit || txnId === null} onClick={() => desk.open('paybills')} />
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig icon="history" label={'Transaction\nHistory'} keys="Ctrl+H" disabled={dis || txnId === null} onClick={history} />
+      <RibbonBig icon="journal" label={'Transaction\nJournal'} keys="Ctrl+Y" disabled={dis || txnId === null} onClick={journal} />
+      <RibbonBig icon="register" label={'A/P\nRegister'} keys="Ctrl+R" onClick={openAp} />
+      <RibbonBig
+        icon="report"
+        label={'Vendor\nQuickReport'}
+        keys="Ctrl+Q"
+        disabled={vendorId === null}
+        onClick={() => vendorId !== null && openQuickReport(desk, { name_id: vendorId })}
+      />
+    </RibbonGroup>
+  );
+
   return (
-    <div className="form-window sales-form purch-form" onKeyDown={onKeyDown}>
-      <div className="form-toolbar">
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('prev')} title="Alt+P">
-          <Mnemonic label="&Previous" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('next')} title="Alt+X">
-          <Mnemonic label="Ne&xt" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={history} title="Ctrl+H">
-          History
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={journal} title="Ctrl+Y">
-          Journal
-        </button>
-        <span className="pb-radios" role="radiogroup" aria-label="Bill or credit">
-          <label className="check">
+    <div className="f13 purch-form" onKeyDown={onKeyDown}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
+      />
+      <div className="f13-page">
+        <div className="bill13-kind" role="radiogroup" aria-label="Bill or credit">
+          <label>
             <input type="radio" name={`${winId}-kind`} checked={!credit} disabled={dis || txnId !== null} onChange={() => setCredit(false)} />
             Bill
           </label>
-          <label className="check">
+          <label>
             <input type="radio" name={`${winId}-kind`} checked={credit} disabled={dis || txnId !== null} onChange={() => setCredit(true)} />
             Credit
           </label>
-        </span>
-        {savedDoc && !credit && savedDoc.open_balance === 0 && <span className="fc-flag">Paid</span>}
-      </div>
+          <span className="spacer" />
+          {savedDoc && !credit && <span>{savedDoc.open_balance === 0 ? 'Paid' : `Open balance ${formatMoney(savedDoc.open_balance ?? 0)}`}</span>}
+          {savedDoc && credit && <span>Remaining credit {formatMoney(savedDoc.unapplied ?? 0)}</span>}
+        </div>
 
-      {error && <div className="msg-strip error">{error}</div>}
+        {error && <div className="msg-strip error">{error}</div>}
 
-      <div className="bill-top">
-        <h2 className="sf-title">{credit ? 'Credit' : 'Bill'}</h2>
-        <div className="bill-grid">
-          <label htmlFor={`${winId}-vendor`}>Vendor</label>
-          <div ref={vendorRef}>
-            <Combo
-              id={`${winId}-vendor`}
-              options={vendorOptions}
-              value={form.vendorId}
-              onChange={(id) => chooseVendor(id)}
-              disabled={dis}
-              {...nameQuickFill(desk, 'vendor')}
-            />
-          </div>
-          <label htmlFor={`${winId}-date`}>Date</label>
-          <DateField
-            id={`${winId}-date`}
-            value={form.date}
-            disabled={dis}
-            onChange={(date) => set(credit ? { date } : { date, dueDate: dueDate(termsFor(formRef.current.termsId), date) })}
-          />
-
-          <label htmlFor={`${winId}-addr`}>Address</label>
-          <textarea id={`${winId}-addr`} className="field addr-box" rows={4} value={form.address} disabled={dis} onChange={(e) => set({ address: e.target.value })} />
-          <label htmlFor={`${winId}-ref`}>Ref. No.</label>
-          <div className="bill-stack">
-            <input
-              id={`${winId}-ref`}
-              className="field num-field"
-              value={form.refNo}
-              maxLength={20}
-              disabled={dis}
-              onChange={(e) => set({ refNo: e.target.value })}
-              onFocus={(e) => e.target.select()}
-            />
-            <label className="bill-sub" htmlFor={`${winId}-amt`}>
-              {credit ? 'Credit Amount' : 'Amount Due'}
+        <div className="paper">
+          <h2 className="paper-title">{credit ? 'Credit' : 'Bill'}</h2>
+          <div className="bill13-grid">
+            <label className="cap-left" htmlFor={`${winId}-vendor`}>
+              Vendor
             </label>
-            <AmountField
-              id={`${winId}-amt`}
-              className="bill-amount"
-              value={form.amountDue}
-              placeholder={formatMoney(sum)}
-              disabled={dis}
-              onChange={(amountDue) => set({ amountDue })}
-            />
-          </div>
-
-          {!credit && (
-            <>
-              <label htmlFor={`${winId}-terms`}>Terms</label>
+            <div ref={vendorRef} className="uline">
               <Combo
-                id={`${winId}-terms`}
-                options={termsOptions}
-                value={form.termsId}
+                id={`${winId}-vendor`}
+                options={vendorOptions}
+                value={form.vendorId}
+                onChange={(id) => chooseVendor(id)}
                 disabled={dis}
-                onChange={(termsId) => set({ termsId, dueDate: dueDate(termsFor(termsId), formRef.current.date) })}
-                {...termsQuickFill(desk)}
+                {...nameQuickFill(desk, 'vendor')}
               />
-              <label htmlFor={`${winId}-due`}>Bill Due</label>
-              <DateField id={`${winId}-due`} value={form.dueDate} disabled={dis} onChange={(d) => set({ dueDate: d })} />
-            </>
-          )}
+            </div>
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-date`}>
+              Date
+            </label>
+            <span className="uline">
+              <DateField
+                id={`${winId}-date`}
+                value={form.date}
+                disabled={dis}
+                onChange={(date) => set(credit ? { date } : { date, dueDate: dueDate(termsFor(formRef.current.termsId), date) })}
+              />
+            </span>
 
-          <label htmlFor={`${winId}-memo`}>Memo</label>
-          <input id={`${winId}-memo`} className="field bill-memo" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
-        </div>
-      </div>
+            <label className="cap-left top" htmlFor={`${winId}-addr`}>
+              Address
+            </label>
+            <textarea
+              id={`${winId}-addr`}
+              className="field addr-box"
+              value={form.address}
+              disabled={dis}
+              onChange={(e) => set({ address: e.target.value })}
+            />
+            <span />
+            <div className="bill13-labels">
+              <label className="cap-left" htmlFor={`${winId}-ref`}>
+                Ref. No.
+              </label>
+              <label className="cap-left" htmlFor={`${winId}-amt`}>
+                {credit ? 'Credit Amount' : 'Amount Due'}
+              </label>
+              {!credit && (
+                <label className="cap-left" htmlFor={`${winId}-due`}>
+                  Bill Due
+                </label>
+              )}
+            </div>
+            <div className="bill13-labels uline">
+              <input
+                id={`${winId}-ref`}
+                className="field"
+                value={form.refNo}
+                maxLength={20}
+                disabled={dis}
+                onChange={(e) => set({ refNo: e.target.value })}
+                onFocus={(e) => e.target.select()}
+              />
+              <AmountField
+                id={`${winId}-amt`}
+                className={`amt${mismatch ? ' mismatch' : ''}`}
+                value={form.amountDue}
+                placeholder={formatMoney(sum)}
+                disabled={dis}
+                onChange={(amountDue) => set({ amountDue })}
+              />
+              {!credit && <DateField id={`${winId}-due`} value={form.dueDate} disabled={dis} onChange={(d) => set({ dueDate: d })} />}
+            </div>
 
-      {mismatch && (
-        <div className="msg-strip info">
-          The lines come to {formatMoney(sum)}, but the {credit ? 'Credit Amount' : 'Amount Due'} is {formatMoney(form.amountDue ?? 0)} (
-          {formatMoney(Math.abs((form.amountDue ?? 0) - sum))} {(form.amountDue ?? 0) > sum ? 'not yet on a line' : 'too much on the lines'}).
-          Correct the lines, or click Recalculate.
-        </div>
-      )}
-      {form.poIds.length > 0 && !credit && (
-        <div className="hint">
-          Receiving against {form.poIds.length === 1 ? 'one purchase order' : `${form.poIds.length} purchase orders`}; saving the bill closes{' '}
-          {form.poIds.length === 1 ? 'it' : 'them'}.
-        </div>
-      )}
+            {!credit && (
+              <>
+                <label className="cap-left" htmlFor={`${winId}-terms`}>
+                  Terms
+                </label>
+                <div className="uline bill13-terms">
+                  <Combo
+                    id={`${winId}-terms`}
+                    options={termsOptions}
+                    value={form.termsId}
+                    disabled={dis}
+                    onChange={(termsId) => set({ termsId, dueDate: dueDate(termsFor(termsId), formRef.current.date) })}
+                    {...termsQuickFill(desk)}
+                  />
+                </div>
+                <span className="bill13-fill" />
+              </>
+            )}
 
-      <div className="bill-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'expenses'}
-          className={`bill-tab${tab === 'expenses' ? ' active' : ''}`}
-          tabIndex={-1}
-          onClick={() => showTab('expenses')}
-          title="Alt+M"
-        >
-          Expenses <span className="tab-amt">{formatMoney(expSum)}</span>
-          <span className="tab-key">Alt+M</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'items'}
-          className={`bill-tab${tab === 'items' ? ' active' : ''}`}
-          tabIndex={-1}
-          onClick={() => showTab('items')}
-          title="Alt+I"
-        >
-          <Mnemonic label="&Items" /> <span className="tab-amt">{formatMoney(itemSum)}</span>
-        </button>
-      </div>
-      <div className="bill-tabpanel">
-        {tab === 'expenses' ? (
-          <ExpenseGrid
-            ref={expRef}
-            lines={form.expenses}
-            setLines={setExpenses}
-            accounts={accounts}
-            customers={customers}
-            remaining={() => {
-              const f = formRef.current;
-              return f.amountDue === null ? 0 : f.amountDue - linesSum(f);
-            }}
-            minRows={MIN_ROWS}
-            disabled={dis}
-          />
-        ) : (
-          <LineGrid
-            ref={itemRef}
-            lines={form.items}
-            setLines={setItems}
-            items={items}
-            accounts={accounts}
-            itemFilter={isPurchasable}
-            minRows={MIN_ROWS}
-            disabled={dis}
-            titles={ITEM_TITLES}
-            purchase
-            customers={customerOptions}
-          />
-        )}
-      </div>
-
-      <div className="sf-foot">
-        <div className="sf-foot-left">
-          <div className="inline-fields">
-            <button type="button" className="btn" disabled={dis} onClick={recalculate} title="Alt+T">
-              <Mnemonic label="Recalcula&te" />
-            </button>
+            <label className="cap-left" htmlFor={`${winId}-memo`}>
+              Memo
+            </label>
+            <span className="uline wide">
+              <input id={`${winId}-memo`} className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
+            </span>
           </div>
         </div>
-        <table className="sf-totals">
-          <tbody>
-            <tr>
-              <th>Total of lines</th>
-              <td className={`total${mismatch ? ' unbalanced' : ''}`}>{formatMoney(sum)}</td>
-            </tr>
-            {savedDoc && !credit && (
-              <tr>
-                <th>Open Balance</th>
-                <td className="total">{formatMoney(savedDoc.open_balance ?? 0)}</td>
-              </tr>
-            )}
-            {savedDoc && credit && (
-              <tr>
-                <th>Remaining Credit</th>
-                <td className="total">{formatMoney(savedDoc.unapplied ?? 0)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
-      <div className="button-row">
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
-          <Mnemonic label="&Save && New" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
-          {txnId === null ? 'Clear' : 'Revert'}
-        </button>
+        {mismatch && (
+          <div className="msg-strip info">
+            The lines come to {formatMoney(sum)}, but the {credit ? 'Credit Amount' : 'Amount Due'} is {formatMoney(form.amountDue ?? 0)} (
+            {formatMoney(Math.abs((form.amountDue ?? 0) - sum))} {(form.amountDue ?? 0) > sum ? 'not yet on a line' : 'too much on the lines'}).
+            Correct the lines, or click Recalculate (Alt+T).
+          </div>
+        )}
+        {form.poIds.length > 0 && !credit && (
+          <div className="f13-note">
+            Receiving against {form.poIds.length === 1 ? 'one purchase order' : `${form.poIds.length} purchase orders`}; saving the bill closes{' '}
+            {form.poIds.length === 1 ? 'it' : 'them'}.
+          </div>
+        )}
+
+        <ExpItemTabs tab={tab} onTab={showTab} expenses={`$${formatMoney(expSum)}`} items={`$${formatMoney(itemSum)}`} expKey="M" />
+        <div className="ei-panel">
+          {tab === 'expenses' ? (
+            <ExpenseGrid
+              ref={expRef}
+              lines={form.expenses}
+              setLines={setExpenses}
+              accounts={accounts}
+              customers={customers}
+              remaining={() => {
+                const f = formRef.current;
+                return f.amountDue === null ? 0 : f.amountDue - linesSum(f);
+              }}
+              minRows={MIN_ROWS}
+              disabled={dis}
+            />
+          ) : (
+            <LineGrid
+              ref={itemRef}
+              lines={form.items}
+              setLines={setItems}
+              items={items}
+              accounts={accounts}
+              itemFilter={isPurchasable}
+              minRows={MIN_ROWS}
+              disabled={dis}
+              titles={ITEM_TITLES}
+              purchase
+              customers={customerOptions}
+            />
+          )}
+        </div>
+
+        <SaveButtons disabled={dis} saved={txnId !== null} onSave={(m) => void save(m)} onClear={() => void clearOrRevert()} />
       </div>
     </div>
   );

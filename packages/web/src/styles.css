@@ -13,8 +13,10 @@
   --inactive1: #6e6e6e;
   --inactive2: #8a8a8a;
   --desk: #b9b9b9;
-  --sel: #3d7bd6;
+  /* Her QuickBooks highlights the selected row, and selected text, in green. */
+  --sel: #4e9e19;
   --sel-text: #ffffff;
+  --focus: #3d7bd6; /* focus ring of a field */
   --field: #ffffff;
   --text: #000000;
   --grey-text: #8c8c8c;
@@ -63,6 +65,11 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+::selection {
+  background: var(--sel);
+  color: var(--sel-text);
 }
 
 .app {
@@ -298,6 +305,72 @@ textarea {
   background: #8f2020;
 }
 
+.win-maxbtn {
+  width: 1.625rem;
+  height: 1.25rem;
+  padding: 0;
+  line-height: 1;
+  font-size: 1rem;
+  color: #ffffff;
+  background: transparent;
+  border: none;
+  border-radius: 0.125rem;
+}
+
+.win-maxbtn:hover {
+  background: #4a4a4a;
+}
+
+.win-title-text {
+  /* with the maximize button too, keep the title centred */
+  padding-left: 1.875rem;
+}
+
+.win:has(.win-maxbtn) .win-title-text {
+  padding-left: 3.5rem;
+}
+
+/* A maximized window fills the desktop; its title is in the application title bar. */
+.win.max {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: none;
+  box-shadow: none;
+}
+
+.win.max > .win-body {
+  overflow: auto;
+}
+
+/* The maximized window's controls, at the right of the menu bar (as in Windows MDI). */
+.mdi-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-left: auto;
+}
+
+.mdi-controls button {
+  width: 1.5rem;
+  height: 1.25rem;
+  padding: 0;
+  font-size: 0.9375rem;
+  line-height: 1;
+  color: #444444;
+  background: transparent;
+  border: var(--px) solid transparent;
+  border-radius: 0.125rem;
+  cursor: default;
+}
+
+.mdi-controls button:hover {
+  background: var(--hot);
+  border-color: var(--hot-border);
+}
+
 .win-body {
   flex: 1;
   min-height: 0;
@@ -325,7 +398,7 @@ textarea {
 
 .field:focus {
   outline: none;
-  border-color: var(--sel);
+  border-color: var(--focus);
   box-shadow: 0 0 0 var(--px) rgba(61, 123, 214, 0.35);
 }
 
@@ -586,7 +659,7 @@ textarea.field {
 }
 
 .listview tr.sel .inactive {
-  color: #c0c0e0;
+  color: #d8ecc8;
 }
 
 .listview-empty {
@@ -692,9 +765,20 @@ textarea.field {
   background: transparent;
 }
 
+/* The line being worked on is green, as in her QuickBooks; the cell being typed in stays white. */
+.line-grid tbody tr:focus-within td {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.line-grid tbody tr:focus-within td .field:not(:focus) {
+  color: var(--sel-text);
+}
+
 .line-grid td .field:focus {
   background: #ffffff;
-  box-shadow: inset 0 0 0 var(--px) var(--sel);
+  color: var(--text);
+  box-shadow: inset 0 0 0 var(--px) var(--focus);
 }
 
 .line-grid td .combo-arrow {
@@ -809,7 +893,7 @@ textarea.field {
 }
 
 .listview tr.sel.inactive td {
-  color: #c0c0e0;
+  color: #d8ecc8;
 }
 
 /* ---------- List edit dialogs (New Customer style) ---------- */
@@ -965,4 +1049,98 @@ textarea.field {
     flex-direction: row;
     flex-wrap: wrap;
   }
+}
+
+/* ---------- QuickBooks 2013 lists: bullets, search bar, the bar of menu buttons ---------- */
+
+.lv-bullet {
+  display: inline-block;
+  width: 0.75em;
+  color: #6a6a6a;
+  font-size: 0.875em;
+}
+
+.listview tr.sel .lv-bullet {
+  color: #ffffff;
+}
+
+.lv-search {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem 0.25rem 0.5rem;
+}
+
+.lv-search > .field:first-of-type {
+  width: 13rem;
+}
+
+.lv-search .lv-in {
+  width: 12rem;
+}
+
+.lv-search .btn {
+  min-width: 7.5rem;
+}
+
+.lv-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.25rem 0.125rem;
+  flex-wrap: wrap;
+}
+
+.lv-inactive {
+  margin-left: 0.375rem;
+}
+
+.mbtn-wrap {
+  position: relative;
+}
+
+.mbtn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.5rem;
+  font-weight: bold;
+  color: #333333;
+  background: linear-gradient(#ffffff, #e9e9e9);
+  border: var(--px) solid #c4c4c4;
+  border-radius: 0.125rem;
+  cursor: default;
+}
+
+.mbtn:hover,
+.mbtn.open {
+  background: linear-gradient(#f4f9fe, #dcebfc);
+  border-color: #7eb4ea;
+}
+
+.mbtn-arrow {
+  font-size: 0.75rem;
+  color: #555555;
+}
+
+.mbtn-drop {
+  top: auto;
+  bottom: 100%;
+  min-width: 15rem;
+}
+
+.mbtn-drop .menu-item:hover:not(.disabled) {
+  background: var(--hot);
+  border-color: var(--hot-border);
+}
+
+.mbtn-drop.down {
+  top: 100%;
+  bottom: auto;
+}
+
+/* QuickBooks 2013 lists are roomier than 2003's. */
+.listview td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }

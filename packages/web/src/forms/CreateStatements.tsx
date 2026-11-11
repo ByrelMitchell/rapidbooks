@@ -19,6 +19,7 @@ import { openTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField } from '../util';
 import './receivables.css';
+import './form2013.css';
 
 /** The first day of the month that ends on (or contains) `iso`: the default statement period. */
 function monthStart(iso: string): string {
@@ -40,7 +41,7 @@ export function CreateStatements({ winId }: WinProps) {
   const [stmtDate, setStmtDate] = useState(todayIso);
   const [from, setFrom] = useState(() => monthStart(todayIso()));
   const [to, setTo] = useState(todayIso);
-  const [mode, setMode] = useState<'all' | 'one'>('all');
+  const [mode, setMode] = useState<'all' | 'multiple' | 'one'>('all');
   const [oneId, setOneId] = useState<number | null>(null);
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
   const [selected, setSelected] = useState<number | null>(null);
@@ -51,6 +52,7 @@ export function CreateStatements({ winId }: WinProps) {
   );
   const idAll = useId();
   const idOne = useId();
+  const idMulti = useId();
 
   // Changing the statement date moves the period to the month ending on it.
   const changeStmtDate = (d: string) => {
@@ -72,7 +74,8 @@ export function CreateStatements({ winId }: WinProps) {
     if (rows.length && (selected === null || !rows.some((r) => r.id === selected))) setSelected(rows[0].id);
   }, [rows, selected]);
 
-  const chosen = rows.filter((r) => !excluded.has(r.id));
+  // Only Multiple Customers uses the ticks; All Customers is every row.
+  const chosen = mode === 'multiple' ? rows.filter((r) => !excluded.has(r.id)) : rows;
   const current = rows.find((r) => r.id === selected) ?? null;
 
   const toggle = (id: number) =>
@@ -94,7 +97,7 @@ export function CreateStatements({ winId }: WinProps) {
 
   const preview = () => {
     if (!check()) return;
-    const target = current && !excluded.has(current.id) ? current : chosen[0];
+    const target = current && chosen.includes(current) ? current : chosen[0];
     if (!target) {
       void desk.alert('There is no customer selected to preview.');
       return;
@@ -147,98 +150,112 @@ export function CreateStatements({ winId }: WinProps) {
   ];
 
   return (
-    <div className="list-window stmt">
-      <div className="stmt-top">
-        <label>
-          Statement Date
-          <DateField value={stmtDate} onChange={changeStmtDate} />
-        </label>
-        <fieldset className="groupbox stmt-period">
-          <legend>Statement Period</legend>
-          <label>
-            From
-            <DateField value={from} onChange={setFrom} />
-          </label>
-          <label>
-            To
-            <DateField value={to} onChange={setTo} />
-          </label>
-        </fieldset>
-      </div>
-      <fieldset className="groupbox stmt-who">
-        <legend>Select Customers</legend>
-        <label className="check" htmlFor={idAll}>
-          <input id={idAll} type="radio" name={`${winId}-who`} checked={mode === 'all'} onChange={() => setMode('all')} />
-          All Customers with a balance or activity in the period
-        </label>
-        <div className="stmt-one">
-          <label className="check" htmlFor={idOne}>
-            <input id={idOne} type="radio" name={`${winId}-who`} checked={mode === 'one'} onChange={() => setMode('one')} />
-            One Customer
-          </label>
-          <Combo
-            options={(customers ?? []).filter((c) => !c.inactive).map((c) => ({ id: c.id, label: c.full_name }))}
-            value={oneId}
-            onChange={(id) => {
-              setOneId(id);
-              if (id !== null) setMode('one');
-            }}
-            aria-label="Customer"
-            {...nameQuickFill(desk, 'customer')}
-          />
+    <div className="f13 stmt13">
+      <div className="f13-page">
+        <div className="stmt13-cols">
+          <div className="stmt13-left">
+            <fieldset className="sec13">
+              <legend>Select Statement Options</legend>
+              <div className="stmt13-grid">
+                <label htmlFor={`${winId}-sdate`}>Statement Date</label>
+                <DateField id={`${winId}-sdate`} value={stmtDate} onChange={changeStmtDate} />
+                <span />
+                <span />
+                <label htmlFor={`${winId}-from`}>Statement Period From</label>
+                <DateField id={`${winId}-from`} value={from} onChange={setFrom} />
+                <label htmlFor={`${winId}-to`}>To</label>
+                <DateField id={`${winId}-to`} value={to} onChange={setTo} />
+              </div>
+            </fieldset>
+            <fieldset className="sec13 stmt13-who">
+              <legend>Select Customers</legend>
+              <label className="check" htmlFor={idAll}>
+                <input id={idAll} type="radio" name={`${winId}-who`} checked={mode === 'all'} onChange={() => setMode('all')} />
+                All Customers
+              </label>
+              <label className="check" htmlFor={idMulti}>
+                <input id={idMulti} type="radio" name={`${winId}-who`} checked={mode === 'multiple'} onChange={() => setMode('multiple')} />
+                Multiple Customers
+              </label>
+              <div className="stmt13-one">
+                <label className="check" htmlFor={idOne}>
+                  <input id={idOne} type="radio" name={`${winId}-who`} checked={mode === 'one'} onChange={() => setMode('one')} />
+                  One Customer
+                </label>
+                <Combo
+                  options={(customers ?? []).filter((c) => !c.inactive).map((c) => ({ id: c.id, label: c.full_name }))}
+                  value={oneId}
+                  onChange={(id) => {
+                    setOneId(id);
+                    if (id !== null) setMode('one');
+                  }}
+                  aria-label="Customer"
+                  {...nameQuickFill(desk, 'customer')}
+                />
+              </div>
+              <div className="stmt13-note">
+                {mode === 'all'
+                  ? `${rows.length} customer${rows.length === 1 ? '' : 's'} with a balance or activity in the period.`
+                  : mode === 'multiple'
+                    ? `${chosen.length} of ${rows.length} ticked below. Space ticks or unticks.`
+                    : ''}
+              </div>
+            </fieldset>
+          </div>
+          <fieldset className="sec13 stmt13-right">
+            <legend>Select Additional Options</legend>
+            <p className="stmt13-note">
+              Statements show every customer with a balance or with activity in the period; each customer gets one statement.
+            </p>
+            <button type="button" className="btn" onClick={() => desk.open('financecharges')}>
+              Assess Finance Charges...
+            </button>
+          </fieldset>
         </div>
-      </fieldset>
-      {error && <div className="msg-strip error">{error}</div>}
-      <div
-        className="stmt-list"
-        onKeyDown={(e) => {
-          if (e.key !== ' ' || e.ctrlKey || e.altKey || e.metaKey) return;
-          if (!(e.target as HTMLElement).classList.contains('listview')) return;
-          e.preventDefault();
-          if (selected !== null) toggle(selected);
-        }}
-      >
-        <ListView
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.id}
-          selected={selected}
-          onSelect={setSelected}
-          onActivate={() => preview()}
-          emptyText={
-            !validRange
-              ? 'The statement period is not valid.'
-              : mode === 'one'
-                ? 'Choose the customer above.'
-                : list
-                  ? 'No customer has a balance or activity in this period.'
-                  : 'Loading...'
-          }
-          label="Customers to print statements for"
-        />
-      </div>
-      <div className="button-row">
-        <span>
-          {chosen.length} of {rows.length} selected. Space ticks or unticks; Enter previews.
-        </span>
-        <span className="spacer" />
-        <button type="button" className="btn" onClick={() => setExcluded(new Set())}>
-          Select All
-        </button>
-        <button type="button" className="btn" onClick={() => setExcluded(new Set(rows.map((r) => r.id)))}>
-          Select None
-        </button>
-      </div>
-      <div className="button-row right">
-        <button type="button" className="btn" onClick={preview}>
-          Preview
-        </button>
-        <button type="button" className="btn default" onClick={() => void print()}>
-          Print
-        </button>
-        <button type="button" className="btn" onClick={() => desk.close(winId)}>
-          Close
-        </button>
+        {error && <div className="msg-strip error">{error}</div>}
+        {mode === 'multiple' && (
+          <div
+            className="stmt-list"
+            onKeyDown={(e) => {
+              if (e.key !== ' ' || e.ctrlKey || e.altKey || e.metaKey) return;
+              if (!(e.target as HTMLElement).classList.contains('listview')) return;
+              e.preventDefault();
+              if (selected !== null) toggle(selected);
+            }}
+          >
+            <ListView
+              columns={columns}
+              rows={rows}
+              rowKey={(r) => r.id}
+              selected={selected}
+              onSelect={setSelected}
+              onActivate={() => preview()}
+              emptyText={!validRange ? 'The statement period is not valid.' : list ? 'No customer has a balance or activity in this period.' : 'Loading...'}
+              label="Customers to print statements for"
+            />
+            <div className="button-row">
+              <button type="button" className="btn" onClick={() => setExcluded(new Set())}>
+                Select All
+              </button>
+              <button type="button" className="btn" onClick={() => setExcluded(new Set(rows.map((r) => r.id)))}>
+                Select None
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="stmt13-buttons">
+          <button type="button" className="btn" onClick={preview}>
+            Preview
+          </button>
+          <span className="spacer" />
+          <button type="button" className="btn primary" onClick={() => void print()}>
+            Print
+          </button>
+          <span className="gap" />
+          <button type="button" className="btn" onClick={() => desk.close(winId)}>
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

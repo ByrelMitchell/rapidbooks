@@ -1,4 +1,4 @@
-import { ITEM_TYPES, itemType, type GroupMember, type Item, type ItemInput } from '@rapidbooks/shared';
+import { ITEM_TYPES, itemType, type GroupMember, type Item, type ItemInput, type ItemPricesInput } from '@rapidbooks/shared';
 import type { DB } from '../db';
 import { AppError } from '../errors';
 
@@ -235,4 +235,22 @@ export function deleteItem(db: DB, id: number) {
     throw new AppError(400, `${row.name} is part of a group item and cannot be deleted. Remove it from the group first.`);
   }
   db.prepare('DELETE FROM items WHERE id = ?').run(id); // its group members go with it
+}
+
+/**
+ * Change Item Prices: set the sales price of several items at once, all or none. Only items
+ * with a money price (not subtotals, groups or percentage discounts and charges).
+ */
+export function changeItemPrices(db: DB, input: ItemPricesInput): number {
+  const update = db.prepare('UPDATE items SET rate = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const p of input.prices) {
+      const old = getRow(db, p.id);
+      if (!itemType(old.type).hasRate || old.rate_is_percent) {
+        throw new AppError(400, `The price of "${old.name}" cannot be changed here.`);
+      }
+      update.run(p.rate, p.id);
+    }
+  })();
+  return input.prices.length;
 }

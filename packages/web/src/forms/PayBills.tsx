@@ -6,6 +6,7 @@ import {
   type Account,
   type PayBillsInput,
   type PayBillsResult,
+  type Terms,
   type UnpaidBill,
 } from '@rapidbooks/shared';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -77,6 +78,14 @@ export function PayBills({ winId }: WinProps) {
   const busy = useRef(false);
   const seq = useRef(0);
   const curRow = useRef(0);
+  // The highlighted bill (Discount & Credit Information), and Filter By's vendor.
+  const [hi, setHi] = useState(0);
+  const [vendorFilter, setVendorFilter] = useState<number | null>(null);
+  const setHighlight = (i: number) => {
+    curRow.current = i;
+    setHi(i);
+  };
+  const { data: terms } = useData<Terms[]>('/api/terms');
   const focusReq = useRef<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const firstNumTouched = useRef(false);
@@ -205,7 +214,8 @@ export function PayBills({ winId }: WinProps) {
 
   const isDirty = () => formRef.current.rows.some(isSelected);
 
-  const pay = async (mode: 'close' | 'new') => {
+  const pay = async (mode: 'close' | 'new' | 'summary') => {
+    let next: 'close' | 'new' = mode === 'new' ? 'new' : 'close';
     if (busy.current || loading) return;
     busy.current = true;
     try {
@@ -260,17 +270,22 @@ export function PayBills({ winId }: WinProps) {
             ? `${n === 1 ? 'One payment was' : `${n} payments were`} created, for ${formatMoney(amount)} in all.`
             : `${n === 1 ? 'One check was' : `${n} checks were`} created, for ${formatMoney(amount)} in all` +
               (nums.length ? ` (check no. ${nums.join(', ')}).` : f.toPrint ? ', to be printed.' : '.');
-        const print = await desk.confirm(`${what}\n\nDo you want to print the check records now?`, {
+        // QuickBooks 2013's Payment Summary: Pay More Bills, Print Checks, Done.
+        const i = await desk.messageBox(`${what}\n\nDo you want to print the check records now?`, {
           title: 'Payment Summary',
-          yes: '&Print',
-          no: '&Done',
           icon: 'info',
+          buttons: ['Pay &More Bills', '&Print Checks', '&Done'],
+          defaultButton: 2,
+          cancelButton: 2,
         });
+        const print = i === 1;
+        if (i === 0) next = 'new';
+        else if (mode === 'summary') next = 'close';
         if (print) {
           if (!openPdfs(res.payments.map((p) => p.id))) desk.setStatus(PDF_BLOCKED);
         }
       }
-      if (mode === 'close') desk.close(winId);
+      if (next === 'close') desk.close(winId);
       else {
         setForm((x) => ({ ...x, rows: [] }));
         curRow.current = 0;
@@ -291,8 +306,8 @@ export function PayBills({ winId }: WinProps) {
   };
 
   useWindowCommands(winId, {
-    save: () => void pay('new'),
-    saveClose: () => void pay('close'),
+    save: () => void pay('summary'),
+    saveClose: () => void pay('summary'),
     saveNew: () => void pay('new'),
     confirmClose: confirmLeave,
   });
@@ -329,7 +344,10 @@ export function PayBills({ winId }: WinProps) {
       return;
     }
     if (e.shiftKey || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
-    const next = row + (e.key === 'ArrowDown' ? 1 : -1);
+    // The next row that is shown (Filter By may hide some).
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    let next = row + step;
+    while (next >= 0 && next < formRef.current.rows.length && !rootRef.current?.querySelector(`[data-row="${next}"][data-col="pay"]`)) next += step;
     if (next < 0 || next >= formRef.current.rows.length) return;
     e.preventDefault();
     rootRef.current?.querySelector<HTMLElement>(`[data-row="${next}"][data-col="pay"]`)?.focus();
@@ -345,215 +363,260 @@ export function PayBills({ winId }: WinProps) {
   const account = accounts?.find((a) => a.id === form.accountId) ?? null;
   const sums = totals(form.rows);
   const dis = loading;
+  const shown = (r: Row) => vendorFilter === null || r.bill.name_id === vendorFilter;
+  const hiRow = form.rows[hi] && shown(form.rows[hi]) ? form.rows[hi] : null;
+  const anySelected = form.rows.some(isSelected);
+  const vendorChoices = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const r of form.rows) seen.set(r.bill.name_id, r.bill.full_name);
+    return [...seen].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [form.rows]);
+  const termsName = (id: number | null) => (id === null ? '' : terms?.find((t) => t.id === id)?.name ?? '');
 
   return (
-    <div className="form-window pb" ref={rootRef} onKeyDown={onKeyDown}>
-      <div className="pb-top">
-        <fieldset className="groupbox pb-show">
-          <legend>Show bills</legend>
-          <label className="check">
-            <input type="radio" name={`${winId}-show`} checked={!form.showAll} onChange={() => edit((f) => ({ ...f, showAll: false }))} />
-            Due on or before
-          </label>
-          <DateField value={form.dueBy} disabled={form.showAll} onChange={(dueBy) => edit((f) => ({ ...f, dueBy }))} aria-label="Due on or before" />
-          <label className="check">
-            <input type="radio" name={`${winId}-show`} checked={form.showAll} onChange={() => edit((f) => ({ ...f, showAll: true }))} />
-            Show all bills
-          </label>
-        </fieldset>
-        <label className="inline-fields">
-          Sort Bills By
-          <select className="field" value={form.sort} onChange={(e) => edit((f) => ({ ...f, sort: e.target.value as Form['sort'] }))}>
-            <option value="due_date">Due Date</option>
-            <option value="vendor">Vendor</option>
-          </select>
-        </label>
-      </div>
-      {error && <div className="msg-strip error">{error}</div>}
-      <div className="grid-wrap pb-grid">
-        <table className="line-grid">
-          <colgroup>
-            <col style={{ width: '2rem' }} />
-            <col style={{ width: '6.5rem' }} />
-            <col />
-            <col style={{ width: '6rem' }} />
-            <col style={{ width: '6.5rem' }} />
-            <col style={{ width: '7.5rem' }} />
-            <col style={{ width: '6.5rem' }} />
-            <col style={{ width: '6.5rem' }} />
-            <col style={{ width: '8rem' }} />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="al-center">✓</th>
-              <th>Date Due</th>
-              <th>Vendor</th>
-              <th>Ref. No.</th>
-              <th>Disc. Date</th>
-              <th className="al-right">Amt. Due</th>
-              <th className="al-right">Disc. Used</th>
-              <th className="al-right">Credits Used</th>
-              <th className="al-right">Amt. To Pay</th>
-            </tr>
-          </thead>
-          <tbody onKeyDown={onGridKey}>
-            {form.rows.map((r, i) => {
-              const cr = creditsUsed(r);
-              return (
-                <tr key={r.id} onFocus={() => (curRow.current = i)}>
-                  <td className="al-center rcv-check" onClick={() => editRow(i, toggle)}>
-                    {isSelected(r) ? '✓' : ''}
-                  </td>
-                  <td className="cell-text">{formatUsDate(r.bill.due_date)}</td>
-                  <td className="cell-text">{r.bill.full_name}</td>
-                  <td className="cell-text">{r.bill.ref_no}</td>
-                  <td className="cell-text">{r.bill.discount_date ? formatUsDate(r.bill.discount_date) : ''}</td>
-                  <td className="cell-text al-right">{formatMoney(r.open)}</td>
-                  <td className="cell-text al-right">{r.discount ? formatMoney(r.discount) : ''}</td>
-                  <td className="cell-text al-right" title={r.bill.credits_available ? `Vendor credits available: ${formatMoney(r.bill.credits_available)}` : undefined}>
-                    {cr ? formatMoney(cr) : r.bill.credits_available ? <span className="grey">avail.</span> : ''}
-                  </td>
-                  <td>
-                    <AmountField
-                      value={r.pay || null}
-                      onChange={(v) => editRow(i, (x) => setPay(x, v))}
-                      data-row={i}
-                      data-col="pay"
-                      aria-label={`Amount to pay on ${billLabel(r.bill)}`}
-                    />
-                  </td>
+    <div className="f13 pb" ref={rootRef} onKeyDown={onKeyDown}>
+      <div className="f13-page">
+        <fieldset className="sec13 pb13-select">
+          <legend>Select Bills To Be Paid</legend>
+          <div className="pb13-top">
+            <span>Show bills</span>
+            <div className="pb13-show">
+              <label className="check">
+                <input type="radio" name={`${winId}-show`} checked={!form.showAll} onChange={() => edit((f) => ({ ...f, showAll: false }))} />
+                Due on or before
+                <DateField value={form.dueBy} disabled={form.showAll} onChange={(dueBy) => edit((f) => ({ ...f, dueBy }))} aria-label="Due on or before" />
+              </label>
+              <label className="check">
+                <input type="radio" name={`${winId}-show`} checked={form.showAll} onChange={() => edit((f) => ({ ...f, showAll: true }))} />
+                Show all bills
+              </label>
+            </div>
+            <div className="pb13-filters">
+              <label htmlFor={`${winId}-filter`}>Filter By</label>
+              <select id={`${winId}-filter`} className="field" value={vendorFilter ?? ''} onChange={(e) => setVendorFilter(e.target.value === '' ? null : Number(e.target.value))}>
+                <option value="">All vendors</option>
+                {vendorChoices.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <label htmlFor={`${winId}-sort`}>Sort By</label>
+              <select id={`${winId}-sort`} className="field" value={form.sort} onChange={(e) => edit((f) => ({ ...f, sort: e.target.value as Form['sort'] }))}>
+                <option value="due_date">Due Date</option>
+                <option value="vendor">Vendor</option>
+              </select>
+            </div>
+          </div>
+          {error && <div className="msg-strip error">{error}</div>}
+          <div className="grid-wrap pb13-grid">
+            <table className="line-grid">
+              <colgroup>
+                <col style={{ width: '2rem' }} />
+                <col style={{ width: '7%' }} />
+                <col />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '22%' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="al-center">✓</th>
+                  <th>Date Due</th>
+                  <th>Vendor</th>
+                  <th>Ref. No.</th>
+                  <th>Disc. Date</th>
+                  <th>Amt. Due</th>
+                  <th>Disc. Used</th>
+                  <th>Credits Used</th>
+                  <th>Amt. To Pay</th>
                 </tr>
-              );
-            })}
-            {form.rows.length === 0 && (
-              <tr>
-                <td colSpan={9} className="cell-text grey">
-                  {loading ? 'Loading...' : form.showAll ? 'There are no unpaid bills.' : 'No unpaid bills are due by that date. Choose "Show all bills" to see the rest.'}
-                </td>
-              </tr>
+              </thead>
+              <tbody onKeyDown={onGridKey}>
+                {form.rows.map((r, i) => {
+                  if (!shown(r)) return null;
+                  const cr = creditsUsed(r);
+                  return (
+                    <tr key={r.id} className="pb13-row" onFocus={() => setHighlight(i)} onMouseDown={() => setHi(i)}>
+                      <td className="al-center rcv-check" onClick={() => editRow(i, toggle)}>
+                        {isSelected(r) ? '✓' : ''}
+                      </td>
+                      <td className="cell-text">{formatUsDate(r.bill.due_date)}</td>
+                      <td className="cell-text">{r.bill.full_name}</td>
+                      <td className="cell-text al-right">{r.bill.ref_no}</td>
+                      <td className="cell-text">{r.bill.discount_date ? formatUsDate(r.bill.discount_date) : ''}</td>
+                      <td className="cell-text al-right">{formatMoney(r.open)}</td>
+                      <td className="cell-text al-right">{formatMoney(r.discount)}</td>
+                      <td className="cell-text al-right">{formatMoney(cr)}</td>
+                      <td>
+                        <AmountField
+                          value={r.pay}
+                          onChange={(v) => editRow(i, (x) => setPay(x, v))}
+                          data-row={i}
+                          data-col="pay"
+                          aria-label={`Amount to pay on ${billLabel(r.bill)}`}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {form.rows.filter(shown).length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="cell-text grey">
+                      {loading ? 'Loading...' : form.showAll ? 'There are no unpaid bills.' : 'No unpaid bills are due by that date. Choose "Show all bills" to see the rest.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={5} className="al-right">
+                    Totals
+                  </td>
+                  <td className="al-right">{formatMoney(sums.open)}</td>
+                  <td className="al-right">{formatMoney(sums.discount)}</td>
+                  <td className="al-right">{formatMoney(sums.credits)}</td>
+                  <td className="al-right">{formatMoney(sums.pay)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="pb13-rowbtns">
+            {anySelected ? (
+              <button type="button" className="btn" disabled={dis} onClick={clearAll} title="Alt+I">
+                <Mnemonic label="Clear Select&ions" />
+              </button>
+            ) : (
+              <button type="button" className="btn" disabled={dis || form.rows.length === 0} onClick={payAll} title="Alt+A">
+                <Mnemonic label="Select &All Bills" />
+              </button>
             )}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={5} className="al-right total-label">
-                Totals
-              </td>
-              <td className="al-right total">{formatMoney(sums.open)}</td>
-              <td className="al-right total">{formatMoney(sums.discount)}</td>
-              <td className="al-right total">{formatMoney(sums.credits)}</td>
-              <td className="al-right total">{formatMoney(sums.pay)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="rcv-buttons pb-rowbtns">
-        <button type="button" className="btn" disabled={dis || form.rows.length === 0} onClick={payAll} title="Alt+A">
-          <Mnemonic label="Pay &All Bills" />
-        </button>
-        <button type="button" className="btn" disabled={dis || form.rows.length === 0} onClick={clearAll} title="Alt+I">
-          <Mnemonic label="Clear Select&ions" />
-        </button>
-        <button type="button" className="btn" disabled={dis || form.rows.length === 0} onClick={() => void openDiscount()} title="Alt+D">
-          <Mnemonic label="Set &Discount..." />
-        </button>
-        <button type="button" className="btn" disabled={dis || form.rows.length === 0} onClick={() => void openCredits()} title="Alt+T">
-          <Mnemonic label="Set Credi&ts..." />
-        </button>
-        <span className="hint">Space ticks the bill you are on.</span>
-      </div>
-      <div className="pb-lower">
-        <label className="stack">
-          Payment Date
-          <DateField value={form.payDate} onChange={(payDate) => edit((f) => ({ ...f, payDate }))} />
-        </label>
-        <fieldset className="groupbox pb-method">
-          <legend>Payment Method</legend>
-          <label className="check">
-            <input type="radio" name={`${winId}-meth`} checked={form.method === 'check'} onChange={() =>
-                edit((f) => ({
-                  ...f,
-                  method: 'check',
-                  // A check cannot be drawn on a credit card account.
-                  accountId: accounts?.find((x) => x.id === f.accountId)?.type === 'BANK' ? f.accountId : firstBank,
-                }))
-              }
-            />
-            Check
-          </label>
-          <div className="pb-sub">
-            <label className="check">
-              <input
-                type="radio"
-                name={`${winId}-print`}
-                checked={form.toPrint}
-                disabled={form.method !== 'check'}
-                onChange={() => edit((f) => ({ ...f, toPrint: true }))}
-              />
-              To be printed
-            </label>
-            <label className="check">
-              <input
-                type="radio"
-                name={`${winId}-print`}
-                checked={!form.toPrint}
-                disabled={form.method !== 'check'}
-                onChange={() => edit((f) => ({ ...f, toPrint: false }))}
-              />
-              Assign check no., starting at
-            </label>
-            <input
-              className="field num-field"
-              value={form.firstNum}
-              maxLength={12}
-              disabled={form.method !== 'check' || form.toPrint}
-              aria-label="First check number"
-              onChange={(e) => {
-                firstNumTouched.current = true;
-                const firstNum = e.target.value;
-                edit((f) => ({ ...f, firstNum }));
-              }}
-              onFocus={(e) => e.target.select()}
-            />
+            <span className="hint">Space ticks the bill you are on.</span>
           </div>
-          <label className="check">
-            <input
-              type="radio"
-              name={`${winId}-meth`}
-              checked={form.method === 'other'}
-              onChange={() => edit((f) => ({ ...f, method: 'other' }))}
-            />
-            Other (credit card, transfer...)
-          </label>
         </fieldset>
-        <div className="pb-acct">
-          <label className="stack">
-            Payment Account
-            <Combo
-              options={accountOptions}
-              value={form.accountId}
-              onChange={(accountId) => edit((f) => ({ ...f, accountId }))}
-              {...accountQuickFill(desk, { type: 'BANK' })}
-            />
-          </label>
-          <div className="pb-bal">
-            <span>Ending Balance</span>
-            <span className={`readout${account && account.balance - sums.pay < 0 && account.type === 'BANK' ? ' error-text' : ''}`}>
-              {account ? formatMoney(account.balance - sums.pay) : ''}
-            </span>
+
+        <fieldset className="sec13 pb13-info">
+          <legend>Discount &amp; Credit Information for Highlighted Bill</legend>
+          <div className="pb13-info-grid">
+            <span>Vendor</span>
+            <span>{hiRow?.bill.full_name ?? ''}</span>
+            <span>Terms</span>
+            <span>{hiRow ? termsName(hiRow.bill.terms_id) : ''}</span>
+            <span>Total Credits Available</span>
+            <b>{formatMoney(hiRow?.bill.credits_available ?? 0)}</b>
+            <span>Bill Ref. No.</span>
+            <span>{hiRow?.bill.ref_no ?? ''}</span>
+            <span>Sugg. Discount</span>
+            <b>{formatMoney(hiRow?.bill.suggested_discount ?? 0)}</b>
+            <span />
+            <span />
           </div>
+          <div className="pb13-info-btns">
+            <button type="button" className="btn" disabled={!hiRow} onClick={() => hiRow && desk.open('bill', { id: hiRow.id })}>
+              Go to Bill
+            </button>
+            <button type="button" className="btn" disabled={dis || !hiRow} onClick={() => void openDiscount()} title="Alt+D">
+              <Mnemonic label="Set &Discount" />
+            </button>
+            <button type="button" className="btn" disabled={dis || !hiRow} onClick={() => void openCredits()} title="Alt+T">
+              <Mnemonic label="Set Credi&ts" />
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset className="sec13 pb13-pay">
+          <legend>Payment</legend>
+          <div className="pb13-pay-grid">
+            <label className="cap">
+              <span>Date</span>
+              <DateField value={form.payDate} onChange={(payDate) => edit((f) => ({ ...f, payDate }))} />
+            </label>
+            <label className="cap">
+              <span>Method</span>
+              <select
+                className="field"
+                value={form.method}
+                onChange={(e) => {
+                  const method = e.target.value as Form['method'];
+                  edit((f) => ({
+                    ...f,
+                    method,
+                    // A check cannot be drawn on a credit card account.
+                    accountId: method === 'check' && accounts?.find((x) => x.id === f.accountId)?.type !== 'BANK' ? firstBank : f.accountId,
+                  }));
+                }}
+              >
+                <option value="check">Check</option>
+                <option value="other">Credit Card / Other</option>
+              </select>
+            </label>
+            <div className="pb13-printopts">
+              <label className="check">
+                <input
+                  type="radio"
+                  name={`${winId}-print`}
+                  checked={form.toPrint}
+                  disabled={form.method !== 'check'}
+                  onChange={() => edit((f) => ({ ...f, toPrint: true }))}
+                />
+                To be printed
+              </label>
+              <label className="check">
+                <input
+                  type="radio"
+                  name={`${winId}-print`}
+                  checked={!form.toPrint}
+                  disabled={form.method !== 'check'}
+                  onChange={() => edit((f) => ({ ...f, toPrint: false }))}
+                />
+                Assign check number
+                <input
+                  className="field num-field"
+                  value={form.firstNum}
+                  maxLength={12}
+                  disabled={form.method !== 'check' || form.toPrint}
+                  aria-label="First check number"
+                  onChange={(e) => {
+                    firstNumTouched.current = true;
+                    const firstNum = e.target.value;
+                    edit((f) => ({ ...f, firstNum }));
+                  }}
+                  onFocus={(e) => e.target.select()}
+                />
+              </label>
+            </div>
+            <div className="pb13-acct">
+              <label className="cap">
+                <span>Account</span>
+                <Combo
+                  options={accountOptions}
+                  value={form.accountId}
+                  onChange={(accountId) => edit((f) => ({ ...f, accountId }))}
+                  aria-label="Payment account"
+                  {...accountQuickFill(desk, { type: 'BANK' })}
+                />
+              </label>
+              <div className="pb13-bal">
+                <b>Ending Balance</b>
+                <b className={account && account.balance - sums.pay < 0 && account.type === 'BANK' ? 'error-text' : undefined}>
+                  {account ? formatMoney(account.balance - sums.pay) : ''}
+                </b>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <div className="f13-buttons">
+          <button type="button" className="btn primary" disabled={dis || !anySelected} onClick={() => void pay('summary')} title="Alt+S">
+            <Mnemonic label="Pay &Selected Bills" />
+          </button>
+          <button type="button" className="btn" onClick={() => void desk.requestClose(winId)}>
+            Cancel
+          </button>
         </div>
-      </div>
-      <div className="button-row">
-        <span className="spacer" />
-        <button type="button" className="btn default" disabled={dis} onClick={() => void pay('close')} title="Alt+S">
-          <Mnemonic label="Pay && Clo&se" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void pay('new')} title="Alt+N">
-          <Mnemonic label="Pay && &New" />
-        </button>
-        <button type="button" className="btn" onClick={() => void desk.requestClose(winId)}>
-          Cancel
-        </button>
       </div>
     </div>
   );

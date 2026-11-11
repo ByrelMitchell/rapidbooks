@@ -1,4 +1,4 @@
-import { formatMoney, todayIso, type Account, type Txn, type TxnInput } from '@rapidbooks/shared';
+import { formatMoney, todayIso, type Account, type Name, type Txn, type TxnInput } from '@rapidbooks/shared';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { api, errorMessage, useData } from '../api';
 import { AmountField } from '../controls/AmountField';
@@ -8,7 +8,10 @@ import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
-import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
+import { commitActiveField, refocus, useLiveState } from '../util';
+import { openQuickReport } from '../reports/open';
+import { anyNameQuickFill } from './receivablesShared';
+import { Ribbon, RibbonBig, RibbonGroup, RibbonStart, SaveButtons } from './Ribbon';
 
 interface Line {
   key: number;
@@ -16,18 +19,20 @@ interface Line {
   debit: number | null;
   credit: number | null;
   memo: string;
+  /** The Name column: a customer, vendor, employee or other name on the line. */
+  nameId: number | null;
 }
 interface Form {
   date: string;
   num: string;
   lines: Line[];
 }
-type Col = 'account' | 'debit' | 'credit' | 'memo';
+type Col = 'account' | 'debit' | 'credit' | 'memo' | 'name';
 const START_ROWS = 8;
 
 let lineSeq = 0;
-const blankLine = (): Line => ({ key: ++lineSeq, accountId: null, debit: null, credit: null, memo: '' });
-const isBlank = (l: Line) => l.accountId === null && l.debit === null && l.credit === null && l.memo.trim() === '';
+const blankLine = (): Line => ({ key: ++lineSeq, accountId: null, debit: null, credit: null, memo: '', nameId: null });
+const isBlank = (l: Line) => l.accountId === null && l.debit === null && l.credit === null && l.memo.trim() === '' && l.nameId === null;
 const blankLines = (n: number) => Array.from({ length: n }, blankLine);
 
 /** Always keep at least one blank row at the end of the grid. */
@@ -51,6 +56,7 @@ export function JournalEntry({ winId, props }: WinProps) {
   const propId = (props.id as number | null | undefined) ?? null;
   const desk = useDesktop();
   const { data: accounts } = useData<Account[]>('/api/accounts');
+  const { data: names } = useData<Name[]>('/api/names');
   const [form, setForm, formRef] = useLiveState<Form>(() => newForm());
   const [txnId, setTxnId, txnIdRef] = useLiveState<number | null>(propId);
   const version = useRef<number | undefined>(undefined);
@@ -111,6 +117,7 @@ export function JournalEntry({ winId, props }: WinProps) {
             debit: s.amount > 0 ? s.amount : null,
             credit: s.amount < 0 ? -s.amount : null,
             memo: s.memo,
+            nameId: s.name_id,
           }),
         );
         while (lines.length < START_ROWS) lines.push(blankLine());
@@ -233,7 +240,7 @@ export function JournalEntry({ winId, props }: WinProps) {
       memo: '',
       splits: f.lines
         .filter((l) => l.accountId !== null)
-        .map((l) => ({ account_id: l.accountId!, amount: (l.debit ?? 0) - (l.credit ?? 0), name_id: null, memo: l.memo })),
+        .map((l) => ({ account_id: l.accountId!, amount: (l.debit ?? 0) - (l.credit ?? 0), name_id: l.nameId, memo: l.memo })),
       ...(id !== null ? { version: version.current } : {}),
     };
 
@@ -342,134 +349,229 @@ export function JournalEntry({ winId, props }: WinProps) {
   const totalDebit = form.lines.reduce((t, l) => t + (l.debit ?? 0), 0);
   const totalCredit = form.lines.reduce((t, l) => t + (l.credit ?? 0), 0);
 
+  // Name list: active names, plus inactive ones this entry already uses.
+  const nameOptions = useMemo(() => {
+    const used = new Set(form.lines.map((l) => l.nameId));
+    return (names ?? []).filter((n) => !n.inactive || used.has(n.id)).map((n) => ({ id: n.id, label: n.full_name }));
+  }, [names, form.lines]);
+
+  /** Previous / Next entry: opens it in this window's place (asking first about unsaved changes). */
+  const go = async (dir: 'prev' | 'next') => {
+    if (loading || saving.current) return;
+    if (!(await confirmClose())) return;
+    try {
+      const id = txnIdRef.current;
+      const adj = await api.get<{ prev: number | null; next: number | null }>(`/api/txns/adjacent?type=GENJRNL&id=${id ?? ''}`);
+      const target = dir === 'prev' ? adj.prev : adj.next;
+      if (target === null) {
+        if (dir === 'next' && id !== null) {
+          desk.close(winId);
+          desk.open('journal', { id: null });
+        } else desk.setStatus(dir === 'prev' ? 'This is the first journal entry.' : 'This is the last journal entry.');
+        return;
+      }
+      desk.close(winId);
+      desk.open('journal', { id: target });
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
+  /** Ribbon > Create a Copy (same lines, today's date, next number) or Reverse (lines swapped, dated the 1st of next month). */
+  const copyAs = async (reverse: boolean) => {
+    if (loading || saving.current) return;
+    if (!(await confirmClose())) return;
+    const src = formRef.current;
+    const lines = src.lines
+      .filter((l) => !isBlank(l))
+      .map((l) => ({ ...l, key: ++lineSeq, ...(reverse ? { debit: l.credit, credit: l.debit } : {}) }));
+    while (lines.length < START_ROWS) lines.push(blankLine());
+    const [y, m] = src.date.split('-').map(Number);
+    const date = reverse ? (m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`) : todayIso();
+    setTxnId(null);
+    version.current = undefined;
+    setError(null);
+    setForm({ date, num: '', lines: withTrailingBlank(lines) });
+    snapshot.current = serialize(newForm());
+    try {
+      const { num } = await api.get<{ num: string }>('/api/txns/next-num?type=GENJRNL');
+      if (formRef.current.num === '' && txnIdRef.current === null) setForm((cur) => ({ ...cur, num }));
+    } catch {
+      // Leave the number blank.
+    }
+    desk.setStatus(reverse ? 'This is the reversing entry. Save it to record it.' : 'This is a copy. Save it to record a new journal entry.');
+  };
+
+  const curName = () => formRef.current.lines[curRow.current]?.nameId ?? null;
+  const mainTab = (
+    <>
+      <RibbonStart
+        disabled={loading}
+        onPrev={() => void go('prev')}
+        onNext={() => void go('next')}
+        onFind={() => desk.open('find')}
+        onNew={() => desk.run('new')}
+        onSave={() => void save('stay')}
+        onDelete={txnId !== null ? () => void remove() : undefined}
+        onCopy={() => void copyAs(false)}
+      />
+      <RibbonGroup>
+        <RibbonBig icon="reverse" label="Reverse" disabled={loading || txnId === null} onClick={() => void copyAs(true)} />
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig
+        icon="journal"
+        label={'Transaction\nJournal'}
+        keys="Ctrl+Y"
+        disabled={txnId === null}
+        onClick={() => txnId !== null && desk.open('txnjournal', { txnId })}
+      />
+      <RibbonBig
+        icon="report"
+        label={'Name\nQuickReport'}
+        keys="Ctrl+Q"
+        onClick={() => {
+          const n = curName();
+          if (n !== null) openQuickReport(desk, { name_id: n });
+          else desk.setStatus('Go to a line with a name first.');
+        }}
+      />
+    </RibbonGroup>
+  );
+
   return (
-    <div className="form-window" ref={rootRef}>
-      <div className="form-header">
-        <label>
-          Date
-          <DateField
-            ref={dateRef}
-            value={form.date}
-            onChange={(date) => setForm((f) => ({ ...f, date }))}
-            disabled={loading}
-          />
-        </label>
-        <label>
-          Entry No.
-          <input
-            className="field num-field"
-            value={form.num}
-            maxLength={20}
-            disabled={loading}
-            onChange={(e) => {
-              const num = e.target.value;
-              setForm((f) => ({ ...f, num }));
-            }}
-            onFocus={(e) => e.target.select()}
-          />
-        </label>
-      </div>
-      {error && <div className="msg-strip error">{error}</div>}
-      <div className="grid-wrap">
-        <table className="line-grid">
-          <colgroup>
-            <col style={{ width: '38%' }} />
-            <col style={{ width: '15%' }} />
-            <col style={{ width: '15%' }} />
-            <col />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Account</th>
-              <th className="al-right">Debit</th>
-              <th className="al-right">Credit</th>
-              <th>Memo</th>
-            </tr>
-          </thead>
-          <tbody onKeyDown={onGridKey}>
-            {form.lines.map((l, i) => (
-              <tr key={l.key} onFocus={() => (curRow.current = i)}>
-                <td>
-                  <Combo
-                    options={options}
-                    value={l.accountId}
-                    onChange={(id) => setAccount(i, id)}
-                    data-row={i}
-                    data-col="account"
-                    aria-label={`Account, line ${i + 1}`}
-                    disabled={loading}
-                    {...accountQuickFill(desk)}
-                  />
-                </td>
-                <td>
-                  <AmountField
-                    value={l.debit}
-                    onChange={(v) => setAmount(i, 'debit', v)}
-                    data-row={i}
-                    data-col="debit"
-                    aria-label={`Debit, line ${i + 1}`}
-                    disabled={loading}
-                  />
-                </td>
-                <td>
-                  <AmountField
-                    value={l.credit}
-                    onChange={(v) => setAmount(i, 'credit', v)}
-                    data-row={i}
-                    data-col="credit"
-                    aria-label={`Credit, line ${i + 1}`}
-                    disabled={loading}
-                  />
-                </td>
-                <td>
-                  <input
-                    className="field"
-                    value={l.memo}
-                    data-row={i}
-                    data-col="memo"
-                    aria-label={`Memo, line ${i + 1}`}
-                    disabled={loading}
-                    onChange={(e) => {
-                      const memo = e.target.value;
-                      editLine(i, (x) => ({ ...x, memo }));
-                    }}
-                  />
-                </td>
+    <div className="f13" ref={rootRef}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
+      />
+      <div className="f13-page">
+        <div className="je13-head">
+          <label>
+            <span className="cap-left">Date</span>
+            <DateField ref={dateRef} value={form.date} onChange={(date) => setForm((f) => ({ ...f, date }))} disabled={loading} />
+          </label>
+          <label>
+            <span className="cap-left">Entry No.</span>
+            <input
+              className="field num-field"
+              value={form.num}
+              maxLength={20}
+              disabled={loading}
+              onChange={(e) => {
+                const num = e.target.value;
+                setForm((f) => ({ ...f, num }));
+              }}
+              onFocus={(e) => e.target.select()}
+            />
+          </label>
+        </div>
+        {error && <div className="msg-strip error">{error}</div>}
+        <div className="grid-wrap">
+          <table className="line-grid">
+            <colgroup>
+              <col style={{ width: '21%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '9%' }} />
+              <col />
+              <col style={{ width: '22%' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th className="al-right">Debit</th>
+                <th className="al-right">Credit</th>
+                <th>Memo</th>
+                <th>Name</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td className="al-right total-label">Totals</td>
-              <td className={`al-right total${totalDebit !== totalCredit ? ' unbalanced' : ''}`}>
-                {formatMoney(totalDebit)}
-              </td>
-              <td className={`al-right total${totalDebit !== totalCredit ? ' unbalanced' : ''}`}>
-                {formatMoney(totalCredit)}
-              </td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="button-row right">
-        <button type="button" className="btn" disabled={loading} onClick={() => void save('close')}>
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={loading} onClick={() => void save('new')}>
-          <Mnemonic label="&Save && New" />
-        </button>
-        {txnId === null ? (
-          <button type="button" className="btn" disabled={loading} onClick={clear}>
-            Clear
-          </button>
-        ) : (
-          <button type="button" className="btn" disabled={loading} onClick={() => void remove()} title="Ctrl+D">
-            Delete
-          </button>
-        )}
+            </thead>
+            <tbody onKeyDown={onGridKey}>
+              {form.lines.map((l, i) => (
+                <tr key={l.key} onFocus={() => (curRow.current = i)}>
+                  <td>
+                    <Combo
+                      options={options}
+                      value={l.accountId}
+                      onChange={(id) => setAccount(i, id)}
+                      data-row={i}
+                      data-col="account"
+                      aria-label={`Account, line ${i + 1}`}
+                      disabled={loading}
+                      {...accountQuickFill(desk)}
+                    />
+                  </td>
+                  <td>
+                    <AmountField
+                      value={l.debit}
+                      onChange={(v) => setAmount(i, 'debit', v)}
+                      data-row={i}
+                      data-col="debit"
+                      aria-label={`Debit, line ${i + 1}`}
+                      disabled={loading}
+                    />
+                  </td>
+                  <td>
+                    <AmountField
+                      value={l.credit}
+                      onChange={(v) => setAmount(i, 'credit', v)}
+                      data-row={i}
+                      data-col="credit"
+                      aria-label={`Credit, line ${i + 1}`}
+                      disabled={loading}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="field"
+                      value={l.memo}
+                      data-row={i}
+                      data-col="memo"
+                      aria-label={`Memo, line ${i + 1}`}
+                      disabled={loading}
+                      onChange={(e) => {
+                        const memo = e.target.value;
+                        editLine(i, (x) => ({ ...x, memo }));
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <Combo
+                      options={nameOptions}
+                      value={l.nameId}
+                      onChange={(nameId) => editLine(i, (x) => ({ ...x, nameId }))}
+                      data-row={i}
+                      data-col="name"
+                      aria-label={`Name, line ${i + 1}`}
+                      disabled={loading}
+                      {...anyNameQuickFill(desk)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="al-right total-label">Totals</td>
+                <td className={`al-right total${totalDebit !== totalCredit ? ' unbalanced' : ''}`}>{formatMoney(totalDebit)}</td>
+                <td className={`al-right total${totalDebit !== totalCredit ? ' unbalanced' : ''}`}>{formatMoney(totalCredit)}</td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <SaveButtons
+          disabled={loading}
+          saved={txnId !== null}
+          onSave={(m) => void save(m)}
+          onClear={txnId === null ? clear : () => void remove()}
+          clearLabel={txnId === null ? 'Clear' : 'Delete'}
+        />
       </div>
     </div>
   );
 }
-

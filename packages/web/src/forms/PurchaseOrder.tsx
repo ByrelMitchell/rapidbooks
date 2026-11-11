@@ -13,6 +13,8 @@ import { companyShipTo, gridFromItemLines, isPurchasable, itemLinesToInput, name
 import { openPdf } from './salesDoc';
 import './sales.css';
 import './purchases.css';
+import { openQuickReport } from '../reports/open';
+import { Ribbon, RibbonBig, RibbonCheck, RibbonGroup, RibbonStack, RibbonStart, SaveButtons } from './Ribbon';
 
 interface Form {
   vendorId: number | null;
@@ -397,127 +399,167 @@ export function PurchaseOrder({ winId, props }: WinProps) {
   const received = doc?.bill_ids.length ?? 0;
   const dis = loading;
 
-  return (
-    <div className="form-window sales-form purch-form" onKeyDown={onKeyDown}>
-      <div className="form-toolbar">
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('prev')} title="Alt+P">
-          <Mnemonic label="&Previous" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('next')} title="Alt+X">
-          <Mnemonic label="Ne&xt" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void print()} title="Ctrl+P">
-          Print
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={history} title="Ctrl+H">
-          History
-        </button>
-        {doc?.closed && <span className="fc-flag">{received ? 'Received in full' : 'Closed'}</span>}
-      </div>
+  /** Ribbon > Create a Copy: the same vendor and lines as a new, unsaved purchase order with the next number. */
+  const copyDoc = async () => {
+    if (busy.current || loading) return;
+    busy.current = true;
+    try {
+      if (!(await askSave())) return;
+      const src = formRef.current;
+      setTxnId(null);
+      setDoc(null);
+      version.current = undefined;
+      setError(null);
+      setForm({ ...src, num: '', closed: false });
+      snapshot.current = serialize(newForm('', shipTo.current));
+      const { num } = await api.get<{ num: string }>('/api/txns/next-num?type=PURCHORD');
+      if (txnIdRef.current === null && formRef.current.num === '') setForm((cur) => ({ ...cur, num }));
+      desk.setStatus('This is a copy. Save it to record a new purchase order.');
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      busy.current = false;
+    }
+  };
 
-      {error && <div className="msg-strip error">{error}</div>}
-
-      <div className="sf-head">
-        <div className="sf-cust" ref={vendorRef}>
-          <label className="stack">
-            Vendor
-            <Combo options={vendorOptions} value={form.vendorId} onChange={chooseVendor} disabled={dis} {...nameQuickFill(desk, 'vendor')} />
-          </label>
-        </div>
-        <h2 className="sf-title">Purchase Order</h2>
-        <div className="sf-datenum">
-          <label className="stack">
-            Date
-            <DateField value={form.date} disabled={dis} onChange={(date) => set({ date })} />
-          </label>
-          <label className="stack">
-            P.O. No.
-            <input
-              className="field num-field"
-              value={form.num}
-              maxLength={20}
-              disabled={dis}
-              onChange={(e) => set({ num: e.target.value })}
-              onFocus={(e) => e.target.select()}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="sf-addrs">
-        <label className="stack">
-          Vendor
-          <textarea className="field addr-box" rows={5} value={form.vendorAddr} disabled={dis} onChange={(e) => set({ vendorAddr: e.target.value })} />
-        </label>
-        <label className="stack">
-          Ship To
-          <textarea className="field addr-box" rows={5} value={form.shipTo} disabled={dis} onChange={(e) => set({ shipTo: e.target.value })} />
-        </label>
-      </div>
-
-      <div className="purch-fields">
-        <label className="stack">
-          Expected
-          <DateField value={form.expected} allowEmpty disabled={dis} onChange={(expected) => set({ expected })} />
-        </label>
-      </div>
-
-      <LineGrid
-        ref={gridRef}
-        lines={form.lines}
-        setLines={setLines}
-        items={items}
-        accounts={accounts}
-        itemFilter={isPurchasable}
-        minRows={MIN_ROWS}
+  const mainTab = (
+    <>
+      <RibbonStart
         disabled={dis}
-        titles={TITLES}
-        purchase
-        customers={customerOptions}
+        onPrev={() => void go('prev')}
+        onNext={() => void go('next')}
+        onFind={() => desk.open('find')}
+        onNew={() => desk.run('new')}
+        onSave={() => void save('stay')}
+        onDelete={txnId !== null ? () => void remove() : undefined}
+        onCopy={() => void copyDoc()}
+      />
+      <RibbonGroup>
+        <RibbonBig icon="closed" label={form.closed ? 'Mark As\nOpen' : 'Mark As\nClosed'} disabled={dis} onClick={() => set({ closed: !form.closed })} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="print" label="Print" keys="Ctrl+P" disabled={dis} onClick={() => void print()} />
+        <RibbonStack>
+          <RibbonCheck label="Print Later" checked={form.toPrint} disabled={dis} onChange={(toPrint) => set({ toPrint })} />
+        </RibbonStack>
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig
+          icon="receipt"
+          label={'Enter Bill\nfor this PO'}
+          disabled={dis || txnId === null || form.closed || form.vendorId === null}
+          onClick={() => form.vendorId !== null && desk.open('bill', { id: null, vendorId: form.vendorId })}
+        />
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig icon="history" label={'Transaction\nHistory'} keys="Ctrl+H" disabled={dis || txnId === null} onClick={history} />
+      <RibbonBig
+        icon="report"
+        label={'Vendor\nQuickReport'}
+        keys="Ctrl+Q"
+        disabled={form.vendorId === null}
+        onClick={() => form.vendorId !== null && openQuickReport(desk, { name_id: form.vendorId })}
+      />
+    </RibbonGroup>
+  );
+
+  return (
+    <div className="f13 purch-form" onKeyDown={onKeyDown}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
       />
 
-      <div className="sf-foot">
-        <div className="sf-foot-left">
-          <label className="stack">
-            Vendor Message
-            <textarea className="field" rows={2} value={form.message} disabled={dis} onChange={(e) => set({ message: e.target.value })} />
-          </label>
-          <label className="inline-fields">
-            Memo
-            <input className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
-          </label>
-          <div className="inline-fields">
-            <label className="check">
-              <input type="checkbox" checked={form.toPrint} disabled={dis} onChange={(e) => set({ toPrint: e.target.checked })} />
-              To be printed
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={form.closed} disabled={dis} onChange={(e) => set({ closed: e.target.checked })} />
-              Closed
-            </label>
-          </div>
-        </div>
-        <table className="sf-totals">
-          <tbody>
-            <tr>
-              <th>Total</th>
-              <td className="total">{formatMoney(total)}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="f13-band" ref={vendorRef}>
+        <label>
+          Vendor
+          <Combo options={vendorOptions} value={form.vendorId} onChange={chooseVendor} disabled={dis} aria-label="Vendor" {...nameQuickFill(desk, 'vendor')} />
+        </label>
+        <span className="spacer" />
+        {doc?.closed && <span className="band-flag">{received ? 'Received in full' : 'Closed'}</span>}
+        {!doc?.closed && form.closed && <span className="band-flag">Closed when saved</span>}
       </div>
 
-      <div className="button-row">
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
-          <Mnemonic label="&Save && New" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
-          {txnId === null ? 'Clear' : 'Revert'}
-        </button>
+      <div className="f13-page">
+        {error && <div className="msg-strip error">{error}</div>}
+
+        <div className="sf13-top">
+          <h2 className="f13-title">Purchase Order</h2>
+          <div className="sf13-datenum">
+            <label className="cap">
+              <span className="cap-text">Date</span>
+              <DateField value={form.date} disabled={dis} onChange={(date) => set({ date })} />
+            </label>
+            <label className="cap">
+              <span className="cap-text">P.O. Number</span>
+              <input
+                className="field num-field"
+                value={form.num}
+                maxLength={20}
+                disabled={dis}
+                onChange={(e) => set({ num: e.target.value })}
+                onFocus={(e) => e.target.select()}
+              />
+            </label>
+          </div>
+          <label className="cap sf13-addr">
+            <span className="cap-text">Vendor</span>
+            <textarea className="field addr-box" value={form.vendorAddr} disabled={dis} onChange={(e) => set({ vendorAddr: e.target.value })} />
+          </label>
+          <label className="cap sf13-addr">
+            <span className="cap-text">Ship To</span>
+            <textarea className="field addr-box" value={form.shipTo} disabled={dis} onChange={(e) => set({ shipTo: e.target.value })} />
+          </label>
+        </div>
+
+        <div className="sf13-fields">
+          <label className="cap">
+            <span className="cap-text">Expected</span>
+            <DateField value={form.expected} allowEmpty disabled={dis} onChange={(expected) => set({ expected })} />
+          </label>
+        </div>
+
+        <LineGrid
+          ref={gridRef}
+          lines={form.lines}
+          setLines={setLines}
+          items={items}
+          accounts={accounts}
+          itemFilter={isPurchasable}
+          minRows={MIN_ROWS}
+          disabled={dis}
+          titles={TITLES}
+          purchase
+          customers={customerOptions}
+        />
+
+        <div className="sf13-foot">
+          <div className="sf13-foot-left">
+            <label className="cap">
+              <span className="cap-text">Message</span>
+              <textarea className="field" rows={2} value={form.message} disabled={dis} onChange={(e) => set({ message: e.target.value })} />
+            </label>
+            <label className="memo-row">
+              <span className="cap-left">Memo</span>
+              <input className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
+            </label>
+          </div>
+          <table className="sf13-totals">
+            <tbody>
+              <tr>
+                <th className="plain">Total</th>
+                <td className="big">{formatMoney(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <SaveButtons disabled={dis} saved={txnId !== null} onSave={(m) => void save(m)} onClear={() => void clearOrRevert()} />
       </div>
     </div>
   );

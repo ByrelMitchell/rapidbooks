@@ -1,0 +1,206 @@
+/* QuickBooks 2013 centers (Employee Center): list on the left, information and transactions on the right. */
+
+.win-body:has(> .center) {
+  padding: 0;
+}
+
+.center {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--field);
+}
+
+.center-tb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: var(--px) solid #d0d0d0;
+  background: linear-gradient(#fbfbfb, #ececec);
+}
+
+.center-tb .mbtn {
+  background: transparent;
+  border-color: transparent;
+}
+
+.center-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.center-left {
+  width: 22rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #d8d8d8;
+  border-right: 0.375rem solid #c4c4c4;
+}
+
+.center-left .listview {
+  flex: 1;
+}
+
+.center-filter {
+  width: 16rem;
+  font-weight: bold;
+}
+
+.center-tabs {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.center-tabs span {
+  padding: 0.25rem 0.75rem;
+  font-weight: bold;
+  background: var(--field);
+}
+
+.center-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.center-info {
+  display: flex;
+  gap: 1.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 0.375rem solid #dcdcdc;
+  min-height: 15rem;
+}
+
+.center-info-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.center-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: var(--px) solid #dddddd;
+  padding-bottom: 0.375rem;
+}
+
+.center-info-head h2 {
+  margin: 0;
+  font-size: 2.125rem;
+  font-weight: normal;
+}
+
+.center-edit {
+  width: 2.5rem;
+  height: 2.25rem;
+  font-size: 1.125rem;
+  background: linear-gradient(#ffffff, #ececec);
+  border: var(--px) solid #c4c4c4;
+  border-radius: 0.1875rem;
+}
+
+.center-fields {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.375rem 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.center-fields dt {
+  text-align: right;
+  color: var(--dark);
+}
+
+.center-fields dd {
+  margin: 0;
+}
+
+.center-fields .pre {
+  white-space: pre-line;
+}
+
+.center-reports {
+  width: 16rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.center-reports h3 {
+  margin: 1.5rem 0 0.25rem;
+  width: 100%;
+  font-size: 0.8125rem;
+  font-weight: normal;
+  text-transform: uppercase;
+  border-bottom: var(--px) solid #dddddd;
+  padding-bottom: 0.25rem;
+}
+
+.linkbtn {
+  padding: 0;
+  font-size: 1rem;
+  color: #2f5fb8;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.linkbtn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.linkbtn:disabled {
+  color: var(--grey-text);
+}
+
+.center-txns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.75rem;
+}
+
+.center-txns .listview {
+  flex: 1;
+}
+
+.center-txn-filters {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.center-txn-filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-transform: uppercase;
+  font-size: 0.8125rem;
+}
+
+.center-txn-filters .field {
+  width: 11rem;
+  text-transform: none;
+}
+
+@media (max-width: 40rem) {
+  .center-main,
+  .center-info {
+    flex-direction: column;
+  }
+  .center-left {
+    width: 100%;
+  }
+}

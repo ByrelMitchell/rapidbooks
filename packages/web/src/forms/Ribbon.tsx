@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Mnemonic as MnemonicText } from '../util';
 import './form2013.css';
 
 /**
@@ -123,6 +124,142 @@ export function RibbonFind({ onPrev, onNext, onFind, disabled }: { onPrev: () =>
   );
 }
 
+/** The groups every 2013 transaction ribbon starts with: ← → Find | New Save Delete (Create a Copy). */
+export function RibbonStart({
+  disabled,
+  onPrev,
+  onNext,
+  onFind,
+  onNew,
+  onSave,
+  onDelete,
+  onCopy,
+}: {
+  disabled?: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onFind: () => void;
+  onNew: () => void;
+  onSave: () => void;
+  /** Undefined when there is nothing saved to delete. */
+  onDelete?: () => void;
+  onCopy?: () => void;
+}) {
+  return (
+    <>
+      <RibbonGroup>
+        <RibbonFind disabled={disabled} onPrev={onPrev} onNext={onNext} onFind={onFind} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="new" label="New" keys="Ctrl+N" disabled={disabled} onClick={onNew} />
+        <RibbonBig icon="save" label="Save" keys="Ctrl+Enter" disabled={disabled} onClick={onSave} />
+        <RibbonBig icon="delete" label="Delete" keys="Ctrl+D" disabled={disabled || !onDelete} onClick={onDelete} />
+        {onCopy && (
+          <RibbonStack>
+            <RibbonSmall icon="copy" label="Create a Copy" disabled={disabled} onClick={onCopy} />
+          </RibbonStack>
+        )}
+      </RibbonGroup>
+    </>
+  );
+}
+
+/** Save & Close, Save & New (blue), and Clear (a new form) or Revert (a saved one), bottom right. */
+export function SaveButtons({
+  disabled,
+  saved,
+  onSave,
+  onClear,
+  clearLabel,
+}: {
+  disabled?: boolean;
+  saved: boolean;
+  onSave: (mode: 'close' | 'new') => void;
+  onClear: () => void;
+  clearLabel?: string;
+}) {
+  return (
+    <div className="f13-buttons">
+      <button type="button" className="btn" disabled={disabled} onClick={() => onSave('close')} title="Alt+A">
+        <MnemonicText label="S&ave && Close" />
+      </button>
+      <button type="button" className="btn primary" disabled={disabled} onClick={() => onSave('new')} title="Alt+S">
+        <MnemonicText label="&Save && New" />
+      </button>
+      <button type="button" className="btn" disabled={disabled} onClick={onClear}>
+        {clearLabel ?? (saved ? 'Revert' : 'Clear')}
+      </button>
+    </div>
+  );
+}
+
+/** Enter Bills / Write Checks: the Expenses and Items tabs, each with its total. */
+export function ExpItemTabs({
+  tab,
+  onTab,
+  expenses,
+  items,
+  expKey,
+}: {
+  tab: 'expenses' | 'items';
+  onTab: (t: 'expenses' | 'items') => void;
+  expenses: string;
+  items: string;
+  /** The Alt key for Expenses (Alt+M in Enter Bills, Alt+K in Write Checks). */
+  expKey: string;
+}) {
+  return (
+    <div className="ei-tabs" role="tablist">
+      <button
+        type="button"
+        role="tab"
+        tabIndex={-1}
+        aria-selected={tab === 'expenses'}
+        className={`ei-tab${tab === 'expenses' ? ' on' : ''}`}
+        onClick={() => onTab('expenses')}
+        title={`Alt+${expKey}`}
+      >
+        <span>
+          <MnemonicText label={`Expenses`.replace(expKey.toLowerCase(), `&${expKey.toLowerCase()}`)} />
+        </span>
+        <b>{expenses}</b>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        tabIndex={-1}
+        aria-selected={tab === 'items'}
+        className={`ei-tab${tab === 'items' ? ' on' : ''}`}
+        onClick={() => onTab('items')}
+        title="Alt+I"
+      >
+        <span>
+          <MnemonicText label="&Items" />
+        </span>
+        <b>{items}</b>
+      </button>
+    </div>
+  );
+}
+
+/** The slim toolbar of the forms QuickBooks 2013 left without a ribbon (Make Deposits, Transfer Funds). */
+export function MiniToolbar({ children }: { children: ReactNode }) {
+  return (
+    <div className="minitb" role="toolbar" onMouseDown={(e) => e.preventDefault()}>
+      {children}
+    </div>
+  );
+}
+
+export function MiniButton({ icon, label, onClick, disabled, keys }: BtnProps) {
+  return (
+    <button type="button" className="minitb-btn" tabIndex={-1} disabled={disabled || !onClick} title={keys ? `${label} (${keys})` : label} onClick={onClick}>
+      <RibbonIcon name={icon} />
+      <MnemonicText label={label} />
+    </button>
+  );
+}
+
 export type RibbonIconName =
   | 'prev'
   | 'next'
@@ -140,7 +277,15 @@ export type RibbonIconName =
   | 'report'
   | 'lookup'
   | 'discount'
-  | 'autoapply';
+  | 'autoapply'
+  | 'selectpo'
+  | 'clearsplits'
+  | 'recalc'
+  | 'paybill'
+  | 'reverse'
+  | 'receipt'
+  | 'closed'
+  | 'register';
 
 const BLUE = '#2f6fd0';
 const INK = '#4a4a4a';
@@ -238,6 +383,52 @@ const GLYPHS: Record<RibbonIconName, ReactNode> = {
     <>
       <rect x={2} y={4} width={16} height={12} fill="#5cae5c" stroke="#2e6e2e" />
       <path d="M6 10l3 3 5-6" fill="none" stroke="#fff" strokeWidth={2} />
+    </>
+  ),
+  selectpo: (
+    <>
+      <path d="M3 2h11v15H3z" fill="#fff" stroke={BLUE} />
+      <path d="M5 6h7M5 9h7M5 12h4" stroke={BLUE} />
+      <path d="M11 13l2 2 4-5" fill="none" stroke={GREEN} strokeWidth={1.8} />
+    </>
+  ),
+  clearsplits: (
+    <>
+      <path d="M3 2h12v16H3z" fill="#fff" stroke={BLUE} />
+      <path d="M5 6h8M5 9h8M5 12h8" stroke={BLUE} />
+      <path d="M11 12l6 6m0-6l-6 6" stroke="#c03030" strokeWidth={1.8} />
+    </>
+  ),
+  recalc: (
+    <>
+      <rect x={4} y={2} width={12} height={16} rx={1} fill={BLUE} />
+      <rect x={6} y={4} width={8} height={3} fill="#dfe9f8" />
+      <path d="M6.5 10h1M9.5 10h1M12.5 10h1M6.5 13h1M9.5 13h1M12.5 13h1M6.5 16h1M9.5 16h1M12.5 16h1" stroke="#fff" strokeWidth={1.6} />
+    </>
+  ),
+  paybill: (
+    <>
+      <path d="M3 2h10v12H3z" fill="#fff" stroke={INK} />
+      <rect x={7} y={10} width={11} height={7} fill={GREEN} stroke="#2e6e2e" />
+    </>
+  ),
+  reverse: <path d="M8 3L2 9l6 6v-4c5 0 8 1 10 5 0-6-3-10-10-10z" fill={BLUE} />,
+  receipt: (
+    <>
+      <rect x={2} y={8} width={16} height={9} fill={GREEN} stroke="#2e6e2e" />
+      <path d="M6 8V4h8v4" fill="#fff" stroke="#2e6e2e" />
+    </>
+  ),
+  closed: (
+    <>
+      <circle cx={10} cy={10} r={7} fill="#9cb8e0" />
+      <path d="M6.5 10l2.5 2.5 4.5-5" fill="none" stroke="#fff" strokeWidth={2} />
+    </>
+  ),
+  register: (
+    <>
+      <path d="M3 3h14v14H3z" fill="#fff" stroke={INK} />
+      <path d="M3 7h14M3 11h14M8 3v14" stroke={BLUE} />
     </>
   ),
 };

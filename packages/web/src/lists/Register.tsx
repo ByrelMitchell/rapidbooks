@@ -1,11 +1,13 @@
 import { accountType, formatMoney, formatUsDate, TXN_TYPE_SHORT, type Account, type RegisterRow } from '@rapidbooks/shared';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { api, errorMessage, useData } from '../api';
 import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { openTxn as openTxnWindow } from '../forms/openTxn';
 import { openQuickReport } from '../reports/open';
+import { RibbonIcon } from '../forms/Ribbon';
+import { Mnemonic } from '../util';
 
 export function Register({ winId, props }: WinProps) {
   const accountId = props.accountId as number;
@@ -108,43 +110,284 @@ export function Register({ winId, props }: WinProps) {
   ];
 
   const ending = rows.length ? rows[rows.length - 1].balance : 0;
+  const accountOf = (r: RegisterRow) => (r.other_account_id === null ? '-split-' : names.get(r.other_account_id) ?? '');
+  const [oneLine, setOneLine] = useState(false);
 
   return (
-    <div className="list-window">
-      {error && <div className="msg-strip error">{error}</div>}
-      <ListView
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.split_id}
-        selected={selected}
-        onSelect={setSelected}
-        onActivate={openTxn}
-        emptyText={data ? 'There are no transactions in this account.' : 'Loading...'}
-        label="Register"
-        tableClass="register-table"
-      />
-      <div className="button-row">
-        <button type="button" className="btn" onClick={newEntry} title="Ctrl+N">
+    <div className="list-window reg13">
+      <div className="minitb reg13-tb" role="toolbar" onMouseDown={(e) => e.preventDefault()}>
+        <button type="button" className="minitb-btn" tabIndex={-1} title="Find (Ctrl+F)" onClick={() => desk.open('find')}>
+          <RibbonIcon name="lookup" />
+          <u>G</u>o to...
+        </button>
+        <button type="button" className="minitb-btn" tabIndex={-1} title={isBank ? 'Write Checks (Ctrl+N)' : 'New (Ctrl+N)'} onClick={newEntry}>
+          <RibbonIcon name="new" />
           {isBank ? 'New Check' : 'New Entry'}
         </button>
         {isBank && (
           <>
-            <button type="button" className="btn" onClick={() => desk.open('deposit', { id: null })}>
+            <button type="button" className="minitb-btn" tabIndex={-1} title="Make Deposits" onClick={() => desk.open('deposit', { id: null })}>
+              <RibbonIcon name="payments" />
               Deposit
             </button>
-            <button type="button" className="btn" onClick={() => desk.open('transfer', { id: null })}>
+            <button type="button" className="minitb-btn" tabIndex={-1} title="Transfer Funds" onClick={() => desk.open('transfer', { id: null })}>
+              <RibbonIcon name="reverse" />
               Transfer
             </button>
           </>
         )}
-        <button type="button" className="btn" disabled={!current} onClick={() => openTxn(current)}>
-          Edit Transaction
+        <button type="button" className="minitb-btn" tabIndex={-1} disabled={!current} title="Ctrl+E" onClick={() => openTxn(current)}>
+          <RibbonIcon name="journal" />
+          <u>E</u>dit Transaction
         </button>
-        <span className="spacer" />
-        <span className="ending">
-          Ending balance <span className="ending-amount">{formatMoney(natural(ending))}</span>
-        </span>
+        <button type="button" className="minitb-btn" tabIndex={-1} title="Ctrl+Q" onClick={() => openQuickReport(desk, { account_id: accountId })}>
+          <RibbonIcon name="report" />
+          QuickReport
+        </button>
       </div>
+      {error && <div className="msg-strip error">{error}</div>}
+      {oneLine ? (
+        <ListView
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.split_id}
+          selected={selected}
+          onSelect={setSelected}
+          onActivate={openTxn}
+          emptyText={data ? 'There are no transactions in this account.' : 'Loading...'}
+          label="Register"
+          tableClass="register-table"
+        />
+      ) : (
+        <TwoLineRegister
+          rows={rows}
+          selected={selected}
+          onSelect={setSelected}
+          onActivate={openTxn}
+          onNew={newEntry}
+          leftTitle={leftTitle}
+          rightTitle={rightTitle}
+          nameTitle={isBank ? 'Payee' : 'Name'}
+          credit={credit}
+          debit={debit}
+          balance={(r) => formatMoney(natural(r.balance))}
+          accountOf={accountOf}
+          onToggleCleared={(r) => void toggleCleared(r)}
+          emptyText={data ? '' : 'Loading...'}
+        />
+      )}
+      <div className="reg13-foot">
+        <div className="reg13-left">
+          <button type="button" className="btn" disabled={!current} title="The debits and credits of this transaction (Ctrl+Y)" onClick={() => current && desk.open('txnjournal', { txnId: current.txn_id })}>
+            <Mnemonic label="S&plits" />
+          </button>
+          <label className="check">
+            <input type="checkbox" checked={oneLine} onChange={(e) => setOneLine(e.target.checked)} />
+            <Mnemonic label="&1-Line" />
+          </label>
+        </div>
+        <span className="cap-left">Ending Balance</span>
+        <span className="reg13-ending">{formatMoney(natural(ending))}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The QuickBooks 2013 register: two lines per transaction (date, number, payee and amounts;
+ * then type, account and memo), the second line tinted green, and an empty entry line at the
+ * bottom that starts a new one. Up/Down, PgUp/PgDn, Home/End move; Enter opens.
+ */
+function TwoLineRegister({
+  rows,
+  selected,
+  onSelect,
+  onActivate,
+  onNew,
+  leftTitle,
+  rightTitle,
+  nameTitle,
+  credit,
+  debit,
+  balance,
+  accountOf,
+  onToggleCleared,
+  emptyText,
+}: {
+  rows: RegisterRow[];
+  selected: number | null;
+  onSelect: (id: number) => void;
+  onActivate: (r: RegisterRow) => void;
+  onNew: () => void;
+  leftTitle: string;
+  rightTitle: string;
+  nameTitle: string;
+  credit: (r: RegisterRow) => string;
+  debit: (r: RegisterRow) => string;
+  balance: (r: RegisterRow) => string;
+  accountOf: (r: RegisterRow) => string;
+  onToggleCleared: (r: RegisterRow) => void;
+  emptyText: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  // -1 = the empty entry line at the bottom.
+  const index = selected === null ? -1 : rows.findIndex((r) => r.split_id === selected);
+  const [onBlank, setOnBlank] = useState(false);
+
+  useEffect(() => {
+    const el = box.current?.querySelector(onBlank ? 'tbody.reg13-new' : `tbody[data-index="${index}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [index, rows.length, onBlank]);
+
+  const pageSize = () => {
+    const b = box.current;
+    const t = b?.querySelector('tbody[data-index]') as HTMLElement | null;
+    if (!b || !t) return 5;
+    return Math.max(1, Math.floor(b.clientHeight / (t.offsetHeight || 1)) - 2);
+  };
+  const go = (i: number) => {
+    if (i >= rows.length) {
+      setOnBlank(true);
+      return;
+    }
+    setOnBlank(false);
+    const r = rows[Math.max(0, i)];
+    if (r) onSelect(r.split_id);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const cur = onBlank ? rows.length : index;
+    const last = rows.length; // the entry line
+    let next: number | null = null;
+    switch (e.key) {
+      case 'ArrowDown':
+        next = Math.min(last, cur + 1);
+        break;
+      case 'ArrowUp':
+        next = Math.max(0, cur - 1);
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = last;
+        break;
+      case 'PageDown':
+        next = Math.min(last, cur + pageSize());
+        break;
+      case 'PageUp':
+        next = Math.max(0, cur - pageSize());
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (onBlank) onNew();
+        else if (index >= 0) onActivate(rows[index]);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    go(next);
+  };
+
+  return (
+    <div className="listview reg13-view" ref={box} tabIndex={0} role="grid" aria-label="Register" onKeyDown={onKeyDown}>
+      <table className="reg13-table">
+        <colgroup>
+          <col style={{ width: '6.5em' }} />
+          <col style={{ width: '5.5em' }} />
+          <col style={{ width: '22%' }} />
+          <col />
+          <col style={{ width: '9em' }} />
+          <col style={{ width: '1.75em' }} />
+          <col style={{ width: '9em' }} />
+          <col style={{ width: '9em' }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Number</th>
+            <th colSpan={2} className="al-center">
+              {nameTitle}
+            </th>
+            <th className="al-center">{leftTitle}</th>
+            <th className="al-center">✓</th>
+            <th className="al-center">{rightTitle}</th>
+            <th className="al-center">Balance</th>
+          </tr>
+          <tr className="reg13-head2">
+            <th />
+            <th className="al-center">Type</th>
+            <th className="al-center">Account</th>
+            <th className="al-center">Memo</th>
+            <th />
+            <th />
+            <th />
+            <th />
+          </tr>
+        </thead>
+        {rows.map((r, i) => {
+          const sel = !onBlank && i === index;
+          return (
+            <tbody
+              key={r.split_id}
+              data-index={i}
+              className={sel ? 'sel' : undefined}
+              onMouseDown={() => go(i)}
+              onDoubleClick={() => onActivate(r)}
+            >
+              <tr>
+                <td>{formatUsDate(r.date)}</td>
+                <td>{r.num}</td>
+                <td colSpan={2}>{r.name ?? ''}</td>
+                <td className="al-right">{credit(r)}</td>
+                <td
+                  className="al-center reg13-clr"
+                  onClick={() => onToggleCleared(r)}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  title="Cleared: click to tick or untick"
+                >
+                  {r.cleared ? '✔' : ''}
+                </td>
+                <td className="al-right">{debit(r)}</td>
+                <td className="al-right">{balance(r)}</td>
+              </tr>
+              <tr className="reg13-line2">
+                <td />
+                <td>{TXN_TYPE_SHORT[r.type] ?? r.type}</td>
+                <td>{accountOf(r)}</td>
+                <td>{r.memo}</td>
+                <td />
+                <td />
+                <td />
+                <td />
+              </tr>
+            </tbody>
+          );
+        })}
+        <tbody className={`reg13-new${onBlank ? ' sel' : ''}`} onMouseDown={() => go(rows.length)} onDoubleClick={onNew} title="Enter or double-click: a new entry">
+          <tr>
+            <td>{emptyText || 'Date'}</td>
+            <td>Number</td>
+            <td colSpan={2}>{nameTitle}</td>
+            <td>{leftTitle}</td>
+            <td />
+            <td>{rightTitle}</td>
+            <td />
+          </tr>
+          <tr>
+            <td />
+            <td />
+            <td>Account</td>
+            <td>Memo</td>
+            <td />
+            <td />
+            <td />
+            <td />
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

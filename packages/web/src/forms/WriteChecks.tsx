@@ -35,8 +35,8 @@ import { openQuickReport } from '../reports/open';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
 import {
   bankOptions,
-  EndingBalance,
   firstBankId,
+  naturalBalance,
   isPurchasable,
   nextCheckNum,
   payeeAddress,
@@ -48,6 +48,7 @@ import { anyNameQuickFill } from './receivablesShared';
 import { openPdf } from './salesDoc';
 import './sales.css';
 import './banking.css';
+import { ExpItemTabs, Ribbon, RibbonBig, RibbonCheck, RibbonGroup, RibbonStack, RibbonStart, SaveButtons } from './Ribbon';
 
 interface Form {
   bankId: number | null;
@@ -576,194 +577,228 @@ export function WriteChecks({ winId, props }: WinProps) {
   const itemFilter = useMemo(() => isPurchasable, []);
   const dis = loading;
   const words = amount > 0 ? amountInWords(amount) : '';
+  const bankName = accounts?.find((a) => a.id === form.bankId)?.full_name;
 
+  // Her QuickBooks names the window after the bank account: "Write Checks - 2782".
+  useEffect(() => {
+    desk.setTitle(winId, bankName ? `Write Checks - ${bankName}` : 'Write Checks');
+  }, [bankName]);
+
+  /** Ribbon > Create a Copy: the same payee and lines as a new, unsaved check with the next number. */
+  const copyDoc = async () => {
+    if (busy.current || loading) return;
+    busy.current = true;
+    try {
+      if (!(await askSave())) return;
+      const src = formRef.current;
+      setTxnId(null);
+      version.current = undefined;
+      setError(null);
+      setForm({ ...src, num: '' });
+      snapshot.current = serialize(newForm(src.bankId));
+      autoNum.current = '';
+      await fillNextNum(src.bankId);
+      desk.setStatus('This is a copy. Save it to record a new check.');
+    } finally {
+      busy.current = false;
+    }
+  };
+  const clearSplits = () => {
+    commitActiveField({ quiet: true });
+    set({ expenses: padExp([], MIN_ROWS), items: padLines([], MIN_ROWS) });
+  };
+
+  const mainTab = (
+    <>
+      <RibbonStart
+        disabled={dis}
+        onPrev={() => void go('prev')}
+        onNext={() => void go('next')}
+        onFind={() => desk.open('find')}
+        onNew={() => desk.run('new')}
+        onSave={() => void save('stay')}
+        onDelete={txnId !== null ? () => void remove() : undefined}
+        onCopy={() => void copyDoc()}
+      />
+      <RibbonGroup>
+        <RibbonBig icon="print" label="Print" keys="Ctrl+P" disabled={dis} onClick={() => void print()} />
+        <RibbonStack>
+          <RibbonCheck label="Print Later" checked={form.toPrint} disabled={dis} onChange={setToPrint} />
+        </RibbonStack>
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="clearsplits" label={'Clear\nSplits'} disabled={dis} onClick={clearSplits} />
+        <RibbonBig icon="recalc" label="Recalculate" keys="Alt+T" disabled={dis || !mismatch} onClick={recalculate} />
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig icon="journal" label={'Transaction\nJournal'} keys="Ctrl+Y" disabled={dis || txnId === null} onClick={journal} />
+      <RibbonBig icon="register" label={'Bank\nRegister'} keys="Ctrl+R" disabled={form.bankId === null} onClick={openRegister} />
+      <RibbonBig
+        icon="report"
+        label={'Payee\nQuickReport'}
+        keys="Ctrl+Q"
+        disabled={form.payeeId === null}
+        onClick={() => form.payeeId !== null && openQuickReport(desk, { name_id: form.payeeId })}
+      />
+    </RibbonGroup>
+  );
+
+  const bank = accounts?.find((a) => a.id === form.bankId);
   return (
-    <div className="form-window bk-form" ref={rootRef} onKeyDown={onKeyDown}>
-      <div className="form-toolbar">
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('prev')} title="Alt+P">
-          <Mnemonic label="&Previous" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('next')} title="Alt+X">
-          <Mnemonic label="Ne&xt" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void print()} title="Ctrl+P">
-          Print
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={journal} title="Ctrl+Y">
-          Journal
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || form.bankId === null} onClick={openRegister} title="Ctrl+R">
-          Register
-        </button>
-      </div>
+    <div className="f13 bk-form" ref={rootRef} onKeyDown={onKeyDown}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
+      />
+      <div className="f13-page">
+        {error && <div className="msg-strip error">{error}</div>}
 
-      {error && <div className="msg-strip error">{error}</div>}
-
-      <div className="bk-bankrow">
-        <label className="inline-fields">
-          Bank Account
-          <span className="bk-bank">
-            <Combo
-              options={banks}
-              value={form.bankId}
-              onChange={chooseBank}
-              disabled={dis}
-              aria-label="Bank Account"
-              {...accountQuickFill(desk, { type: 'BANK' })}
-            />
-          </span>
-        </label>
-        <EndingBalance accounts={accounts} id={form.bankId} />
-      </div>
-
-      <div className="bk-check">
-        <div className="bk-check-top">
-          <label className="inline-fields">
-            No.
-            <input
-              ref={numRef}
-              className="field num-field"
-              value={form.toPrint ? 'To Print' : form.num}
-              readOnly={form.toPrint}
-              maxLength={20}
-              disabled={dis}
-              onChange={(e) => set({ num: e.target.value })}
-              onFocus={(e) => e.target.select()}
-              onBlur={checkNum}
-            />
+        <div className="chk13-bank">
+          <label className="cap-left" htmlFor={`${winId}-bank`}>
+            <Mnemonic label="Ban&k Account" />
           </label>
-          <label className="inline-fields">
-            Date
-            <DateField value={form.date} disabled={dis} onChange={(date) => set({ date })} />
-          </label>
-        </div>
-        <div className="bk-payrow">
-          <label className="bk-paylabel" htmlFor={`${winId}-payee`}>
-            Pay to the
-            <br />
-            Order of
-          </label>
-          <span className="bk-payee">
-            <Combo
-              id={`${winId}-payee`}
-              data-field="payee"
-              options={payeeOptions}
-              value={form.payeeId}
-              onChange={choosePayee}
-              disabled={dis}
-              {...anyNameQuickFill(desk)}
-            />
-          </span>
-          <span className="bk-dollar">$</span>
-          <AmountField
-            className={`bk-amount${mismatch ? ' bk-mismatch' : ''}`}
-            value={amount}
+          <Combo
+            id={`${winId}-bank`}
+            options={banks}
+            value={form.bankId}
+            onChange={chooseBank}
             disabled={dis}
-            aria-label="Check amount"
-            onChange={(v) => set({ amount: v })}
+            {...accountQuickFill(desk, { type: 'BANK' })}
           />
+          <span className="endbal">
+            <span className="cap-left">Ending Balance</span>
+            <b>{bank ? formatMoney(naturalBalance(bank)) : ''}</b>
+          </span>
         </div>
-        <div className="bk-words">
-          <span className="bk-words-text">{words ? `${words} ${'*'.repeat(Math.max(3, 60 - words.length))}` : ''}</span>
-          <span>Dollars</span>
-        </div>
-        <div className="bk-addr-row">
-          <label className="stack">
-            Address
+
+        <div className="paper chkpaper">
+          <div className="chk13-grid">
+            <span />
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-num`}>
+              No.
+            </label>
+            <span className="uline">
+              <input
+                id={`${winId}-num`}
+                ref={numRef}
+                className="field"
+                value={form.toPrint ? 'To Print' : form.num}
+                readOnly={form.toPrint}
+                maxLength={20}
+                disabled={dis}
+                onChange={(e) => set({ num: e.target.value })}
+                onFocus={(e) => e.target.select()}
+                onBlur={checkNum}
+              />
+            </span>
+            <span />
+            <span />
+            <label className="cap-left" htmlFor={`${winId}-date`}>
+              Date
+            </label>
+            <span className="uline">
+              <DateField id={`${winId}-date`} value={form.date} disabled={dis} onChange={(date) => set({ date })} />
+            </span>
+            <label className="cap-left" htmlFor={`${winId}-payee`}>
+              Pay to the Order of
+            </label>
+            <span className="uline chk13-payee">
+              <Combo
+                id={`${winId}-payee`}
+                data-field="payee"
+                options={payeeOptions}
+                value={form.payeeId}
+                onChange={choosePayee}
+                disabled={dis}
+                {...anyNameQuickFill(desk)}
+              />
+            </span>
+            <label className="cap-left" htmlFor={`${winId}-amt`}>
+              $
+            </label>
+            <span className="uline">
+              <AmountField
+                id={`${winId}-amt`}
+                className={`chk13-amount${mismatch ? ' mismatch' : ''}`}
+                value={amount}
+                disabled={dis}
+                onChange={(v) => set({ amount: v })}
+              />
+            </span>
+            <div className="chk13-words">
+              <span>{words ? `${words} ${'*'.repeat(Math.max(3, 60 - words.length))}` : ''}</span>
+              <span>Dollars</span>
+            </div>
+            <label className="cap-left chk13-top" htmlFor={`${winId}-addr`}>
+              Address
+            </label>
             <textarea
-              className="field addr-box"
-              rows={4}
+              id={`${winId}-addr`}
+              className="field addr-box span3"
               value={form.address}
               disabled={dis}
               onChange={(e) => set({ address: e.target.value })}
             />
-          </label>
+            <label className="cap-left" htmlFor={`${winId}-memo`}>
+              Memo
+            </label>
+            <span className="uline span3">
+              <input id={`${winId}-memo`} className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
+            </span>
+          </div>
         </div>
-        <label className="inline-fields bk-memo">
-          Memo
-          <input className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
-        </label>
-      </div>
-
-      <div className="bk-tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          tabIndex={-1}
-          aria-selected={tab === 'expenses'}
-          className={`bk-tab${tab === 'expenses' ? ' active' : ''}`}
-          onClick={() => showTab('expenses')}
-          title="Alt+K"
-        >
-          Expenses <span className="bk-tab-amt">{formatMoney(expTotal(form.expenses))}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          tabIndex={-1}
-          aria-selected={tab === 'items'}
-          className={`bk-tab${tab === 'items' ? ' active' : ''}`}
-          onClick={() => showTab('items')}
-          title="Alt+I"
-        >
-          <Mnemonic label="&Items" /> <span className="bk-tab-amt">{formatMoney(linesTotal(form.items, imap))}</span>
-        </button>
-      </div>
-      {tab === 'expenses' ? (
-        <ExpenseGrid
-          ref={expRef}
-          rows={form.expenses}
-          setRows={(fn) => {
-            setError(null);
-            setForm((f) => ({ ...f, expenses: fn(f.expenses) }));
-          }}
-          accounts={accounts}
-          customers={customers}
-          minRows={MIN_ROWS}
-          disabled={dis}
-          unassigned={unassigned}
-        />
-      ) : (
-        <div className="bk-items">
-          <LineGrid
-            ref={itemRef}
-            lines={form.items}
-            setLines={(fn) => {
-              setError(null);
-              setForm((f) => ({ ...f, items: fn(f.items) }));
-            }}
-            items={items}
-            itemFilter={itemFilter}
-            minRows={MIN_ROWS}
-            disabled={dis}
-            titles={{ rate: 'Cost' }}
-          />
-        </div>
-      )}
-
-      <div className="button-row">
-        <label className="check">
-          <input type="checkbox" checked={form.toPrint} disabled={dis} onChange={(e) => setToPrint(e.target.checked)} />
-          <Mnemonic label="To be printe&d" />
-        </label>
         {mismatch && (
-          <span className="bk-mismatch-note">
-            The lines total {formatMoney(sum)}.
-          </span>
+          <div className="msg-strip info">
+            The lines total {formatMoney(sum)}, but the check is for {formatMoney(amount)}. Correct the lines, or click Recalculate (Alt+T).
+          </div>
         )}
-        <button type="button" className="btn" disabled={dis || !mismatch} onClick={recalculate} title="Alt+T">
-          <Mnemonic label="Recalcula&te" />
-        </button>
-        <span className="spacer" />
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
-          <Mnemonic label="S&ave && Close" />
-        </button>
-        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
-          <Mnemonic label="&Save && New" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
-          {txnId === null ? 'Clear' : 'Revert'}
-        </button>
+
+        <ExpItemTabs
+          tab={tab}
+          onTab={showTab}
+          expenses={`$${formatMoney(expTotal(form.expenses))}`}
+          items={`$${formatMoney(linesTotal(form.items, imap))}`}
+          expKey="K"
+        />
+        <div className="ei-panel">
+          {tab === 'expenses' ? (
+            <ExpenseGrid
+              ref={expRef}
+              rows={form.expenses}
+              setRows={(fn) => {
+                setError(null);
+                setForm((f) => ({ ...f, expenses: fn(f.expenses) }));
+              }}
+              accounts={accounts}
+              customers={customers}
+              minRows={MIN_ROWS}
+              disabled={dis}
+              unassigned={unassigned}
+            />
+          ) : (
+            <LineGrid
+              ref={itemRef}
+              lines={form.items}
+              setLines={(fn) => {
+                setError(null);
+                setForm((f) => ({ ...f, items: fn(f.items) }));
+              }}
+              items={items}
+              itemFilter={itemFilter}
+              minRows={MIN_ROWS}
+              disabled={dis}
+              titles={{ rate: 'Cost' }}
+            />
+          )}
+        </div>
+
+        <SaveButtons disabled={dis} saved={txnId !== null} onSave={(m) => void save(m)} onClear={() => void clearOrRevert()} />
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ export interface ViewPrefs {
   /** The left bar shows its labels; folded, it is a narrow strip of icons. */
   leftBarOpen: boolean;
   largeLists: boolean;
+  /** Main windows (forms, lists, registers, reports) fill the desktop, as on her screen. */
+  maxWindows: boolean;
 }
 
 const KEYS: Record<keyof ViewPrefs, string> = {
@@ -20,8 +22,9 @@ const KEYS: Record<keyof ViewPrefs, string> = {
   leftIconBar: 'rapidbooks.leftIconBar',
   leftBarOpen: 'rapidbooks.leftBarOpen',
   largeLists: 'rapidbooks.largeListFont',
+  maxWindows: 'rapidbooks.maxWindows',
 };
-const DEFAULTS: ViewPrefs = { iconBar: true, leftIconBar: true, leftBarOpen: false, largeLists: false };
+const DEFAULTS: ViewPrefs = { iconBar: true, leftIconBar: true, leftBarOpen: false, largeLists: false, maxWindows: true };
 
 function read(): ViewPrefs {
   const out = { ...DEFAULTS };
