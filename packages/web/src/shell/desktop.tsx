@@ -24,6 +24,12 @@ export interface Commands {
   insertLine?: () => void;
   deleteLine?: () => void;
   register?: () => void;
+  /** Ctrl+H: the transaction's history. */
+  history?: () => void;
+  /** Ctrl+Y: the transaction's journal (its splits). */
+  txnJournal?: () => void;
+  /** Ctrl+P: print the form. */
+  print?: () => void;
   /** Return (or resolve to) false to keep the window open. */
   confirmClose?: () => boolean | Promise<boolean>;
 }

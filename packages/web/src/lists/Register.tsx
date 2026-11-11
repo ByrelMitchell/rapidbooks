@@ -1,11 +1,10 @@
-import { accountType, formatMoney, formatUsDate, type Account, type RegisterRow } from '@rapidbooks/shared';
+import { accountType, formatMoney, formatUsDate, TXN_TYPE_SHORT, type Account, type RegisterRow } from '@rapidbooks/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage, useData } from '../api';
 import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
-
-const TYPE_CODES: Record<string, string> = { GENJRNL: 'GENJRNL' };
+import { openTxn as openTxnWindow } from '../forms/openTxn';
 
 export function Register({ winId, props }: WinProps) {
   const accountId = props.accountId as number;
@@ -38,9 +37,7 @@ export function Register({ winId, props }: WinProps) {
   const current = rows.find((r) => r.split_id === selected) ?? null;
 
   const openTxn = (r: RegisterRow | null) => {
-    if (!r) return;
-    if (r.type === 'GENJRNL') desk.open('journal', { id: r.txn_id });
-    else desk.setStatus('This kind of transaction cannot be opened yet.');
+    if (r) openTxnWindow(desk, r.type, r.txn_id);
   };
 
   const toggleCleared = async (r: RegisterRow) => {
@@ -80,7 +77,7 @@ export function Register({ winId, props }: WinProps) {
   const columns: Column<RegisterRow>[] = [
     { key: 'date', title: 'Date', width: '7rem', render: (r) => formatUsDate(r.date) },
     { key: 'num', title: 'Number', width: '5rem', render: (r) => r.num },
-    { key: 'type', title: 'Type', width: '6rem', render: (r) => TYPE_CODES[r.type] ?? r.type },
+    { key: 'type', title: 'Type', width: '6rem', render: (r) => TXN_TYPE_SHORT[r.type] ?? r.type },
     { key: 'name', title: 'Name', width: '9rem', render: (r) => r.name ?? '' },
     {
       key: 'account',

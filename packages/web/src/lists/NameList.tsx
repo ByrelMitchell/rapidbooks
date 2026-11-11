@@ -59,14 +59,23 @@ export function NameList({ winId, kind }: WinProps & { kind: NameKind }) {
       extraButtons={
         kind === 'customer'
           ? (cur) => (
-              <button
-                type="button"
-                className="btn"
-                disabled={!cur}
-                onClick={() => cur && desk.open(dialog, { id: null, parentId: cur.id })}
-              >
-                Add Job
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!cur}
+                  onClick={() => cur && desk.open(dialog, { id: null, parentId: cur.id })}
+                >
+                  Add Job
+                </button>
+                {/* Activities */}
+                <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('invoice', { id: null, customerId: cur.id })}>
+                  Create Invoices
+                </button>
+                <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('payment', { id: null, customerId: cur.id })}>
+                  Receive Payments
+                </button>
+              </>
             )
           : undefined
       }

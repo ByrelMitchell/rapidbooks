@@ -24,7 +24,6 @@ export async function openRegister(desk: Desktop) {
 }
 
 const NOT_YET: Record<string, string> = {
-  KeyI: 'Create Invoices',
   KeyW: 'Write Checks',
   KeyF: 'Find',
   KeyQ: 'QuickReport',
@@ -94,6 +93,21 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         if (name) {
           e.preventDefault();
           d.run(name);
+          return;
+        }
+        // Ctrl+H: the active window's history, where it has one.
+        if (code === 'KeyH' && d.run('history')) {
+          e.preventDefault();
+          return;
+        }
+        // Ctrl+Y transaction journal, Ctrl+P print: where the active window has them.
+        if ((code === 'KeyY' && d.run('txnJournal')) || (code === 'KeyP' && d.run('print'))) {
+          e.preventDefault();
+          return;
+        }
+        if (code === 'KeyI') {
+          e.preventDefault();
+          d.open('invoice', { id: null });
           return;
         }
         const feature = NOT_YET[code];

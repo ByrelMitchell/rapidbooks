@@ -1,0 +1,173 @@
+/* Create Invoices / Credit Memos, the document line grid, e-mail and form queues. */
+
+.sales-form {
+  gap: 0.375rem;
+}
+
+.form-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-bottom: 0.375rem;
+  border-bottom: var(--px) solid var(--shadow);
+  box-shadow: 0 var(--px) var(--hilite);
+}
+
+.btn.tool {
+  min-width: 0;
+  padding: 0.2rem 0.625rem;
+}
+
+.fc-flag {
+  margin-left: auto;
+  font-weight: bold;
+  color: var(--error);
+}
+
+.msg-strip.info {
+  background: var(--error-bg);
+}
+
+.msg-strip.pre {
+  white-space: pre-wrap;
+}
+
+.sf-head {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.sf-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: var(--navy);
+  align-self: center;
+}
+
+.sf-datenum {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.sf-addrs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.addr-box {
+  resize: none;
+}
+
+.sf-fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.sf-fields .date-field {
+  width: 100%;
+}
+
+.doc-grid {
+  max-height: 18rem;
+}
+
+.line-grid td .desc-field {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.25;
+}
+
+.line-grid td .field[readonly] {
+  color: var(--dark);
+}
+
+.sf-foot {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.sf-foot-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.sf-foot-left .inline-fields {
+  gap: 1rem;
+}
+
+.sf-totals {
+  border-collapse: collapse;
+  min-width: 17rem;
+}
+
+.sf-totals th {
+  text-align: right;
+  font-weight: normal;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+}
+
+.sf-totals td {
+  text-align: right;
+  padding: 0.25rem 0.375rem;
+  min-width: 8rem;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+}
+
+.email-dialog .top-label {
+  align-self: start;
+  padding-top: 0.25rem;
+}
+
+.attachment {
+  font-style: italic;
+}
+
+.results-box {
+  margin-top: 0.5rem;
+  max-height: 8rem;
+  overflow: auto;
+  padding: 0.375rem 0.5rem;
+  background: var(--field);
+  border: var(--px) solid var(--shadow);
+}
+
+.result-err {
+  color: var(--error);
+}
+
+.apply-head {
+  padding-bottom: 0.5rem;
+}
+
+.apply-grid td.cell-text {
+  padding: 0.125rem 0.375rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 40rem) {
+  .sf-head,
+  .sf-addrs,
+  .sf-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .sf-foot {
+    flex-direction: column;
+  }
+}

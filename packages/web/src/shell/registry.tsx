@@ -1,6 +1,16 @@
 import type { ComponentType } from 'react';
 import { CompanyInfo } from '../forms/CompanyInfo';
+import { CreateStatements, StatementPreview } from '../forms/CreateStatements';
+import { FinanceCharges, FinanceChargeSettingsDialog } from '../forms/FinanceCharges';
 import { JournalEntry } from '../forms/JournalEntry';
+import { MakeDeposits, PaymentsToDeposit } from '../forms/MakeDeposits';
+import { PaymentDiscount, PaymentHistory } from '../forms/PaymentExtras';
+import { ReceivePayments } from '../forms/ReceivePayments';
+import { ApplyCredits } from '../forms/ApplyCredits';
+import { EmailDialog } from '../forms/EmailDialog';
+import { PrintForms, SendForms } from '../forms/FormQueues';
+import { CreditMemo, Invoice } from '../forms/SalesForm';
+import { TxnHistory, TxnJournal } from '../forms/TxnInfo';
 import { AccountDialog } from '../lists/AccountDialog';
 import { ChartOfAccounts } from '../lists/ChartOfAccounts';
 import { ItemDialog } from '../lists/ItemDialog';
@@ -44,4 +54,23 @@ export const registry: Registry = {
   othername: { component: OtherNameDialog, title: 'New Name', width: 54 },
   item: { component: ItemDialog, title: 'New Item', width: 44 },
   term: { component: TermsDialog, title: 'New Terms', width: 38 },
+  // Receive payments, deposits, statements, finance charges
+  payment: { component: ReceivePayments, title: 'Receive Payments', width: 60 },
+  pmtdiscount: { component: PaymentDiscount, title: 'Discount and Credits', width: 30 },
+  pmthistory: { component: PaymentHistory, title: 'Payment History', width: 44, height: 20 },
+  deposit: { component: MakeDeposits, title: 'Make Deposits', width: 64 },
+  depositpicker: { component: PaymentsToDeposit, title: 'Payments to Deposit', width: 54, height: 24 },
+  statements: { component: CreateStatements, title: 'Create Statements', width: 46, height: 36 },
+  statementpreview: { component: StatementPreview, title: 'Statement', width: 60, height: 30 },
+  financecharges: { component: FinanceCharges, title: 'Assess Finance Charges', width: 52, height: 30 },
+  fcsettings: { component: FinanceChargeSettingsDialog, title: 'Finance Charge Settings', width: 34 },
+  // Invoices and credit memos, e-mail, print and send queues
+  invoice: { component: Invoice, title: 'Create Invoices', width: 64 },
+  creditmemo: { component: CreditMemo, title: 'Create Credit Memos/Refunds', width: 64 },
+  email: { component: EmailDialog, title: 'Send Form by E-mail', width: 44 },
+  sendforms: { component: SendForms, title: 'Select Forms to Send', width: 62, height: 28 },
+  printforms: { component: PrintForms, title: 'Select Invoices to Print', width: 52, height: 26 },
+  applycredits: { component: ApplyCredits, title: 'Apply Credits', width: 52 },
+  txnhistory: { component: TxnHistory, title: 'Transaction History', width: 46, height: 20 },
+  txnjournal: { component: TxnJournal, title: 'Transaction Journal', width: 62, height: 20 },
 };

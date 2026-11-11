@@ -24,7 +24,15 @@ function buildMenus(desk: Desktop): Menu[] {
   const cmds = desk.commands(desk.activeId);
   const cmd = (name: CommandName) => (cmds[name] ? () => desk.run(name) : undefined);
   return [
-    { label: '&File', items: [{ label: '&Back Up...' }] },
+    {
+      label: '&File',
+      items: [
+        { label: '&Back Up...' },
+        'sep',
+        { label: 'Print &Forms > Invoices...', action: () => desk.open('printforms') },
+        { label: 'Sen&d Forms...', action: () => desk.open('sendforms') },
+      ],
+    },
     {
       label: '&Edit',
       items: [
@@ -70,11 +78,11 @@ function buildMenus(desk: Desktop): Menu[] {
       items: [
         { label: 'Customer:&Job List', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
         'sep',
-        { label: 'Create &Invoices', shortcut: 'Ctrl+I' },
-        { label: 'Create Credit &Memos/Refunds' },
-        { label: 'Create &Statements...' },
-        { label: 'Assess Finance &Charges' },
-        { label: '&Receive Payments' },
+        { label: 'Create &Invoices', shortcut: 'Ctrl+I', action: () => desk.open('invoice', { id: null }) },
+        { label: 'Create Credit &Memos/Refunds', action: () => desk.open('creditmemo', { id: null }) },
+        { label: 'Create &Statements...', action: () => desk.open('statements') },
+        { label: 'Assess Finance &Charges', action: () => desk.open('financecharges') },
+        { label: '&Receive Payments', action: () => desk.open('payment', { id: null }) },
       ],
     },
     {
@@ -95,7 +103,7 @@ function buildMenus(desk: Desktop): Menu[] {
       label: '&Banking',
       items: [
         { label: '&Write Checks', shortcut: 'Ctrl+W' },
-        { label: 'Make &Deposits' },
+        { label: 'Make &Deposits', action: () => desk.open('deposit', { id: null }) },
         { label: '&Transfer Funds' },
         { label: 'Use &Register', shortcut: 'Ctrl+R', action: () => openRegister(desk) },
       ],
