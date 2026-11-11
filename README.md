@@ -12,6 +12,15 @@ npm test               # all tests
 npm run typecheck
 ```
 
+### Demo company
+
+`npm run demo` builds `data/demo.db`: Miami Valley Precision, a made-up Dayton machine shop with a full chart of accounts, 37 customers and jobs, 26 vendors, 7 employees, 39 items and about 3,000 transactions from January 1 of last year to today (invoices, credit memos, payments and deposits, purchase orders received on bills, Pay Bills runs with discounts and credits, checks, transfers, biweekly payroll and tax deposits, finance charges, cleared bank items). Options: `--out FILE`, `--through YYYY-MM-DD`, `--seed N`, `--force` to replace an existing file. The same date and seed always give the same file. Open it with:
+
+```
+RAPIDBOOKS_DB=data/demo.db npm run dev:server            # bash
+$env:RAPIDBOOKS_DB='data/demo.db'; npm run dev:server    # PowerShell
+```
+
 ## Production
 
 ```

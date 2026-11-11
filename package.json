@@ -11,6 +11,7 @@
     "dev:web": "npm run dev -w @rapidbooks/web",
     "build": "npm run build -w @rapidbooks/web",
     "start": "npm run start -w @rapidbooks/server",
+    "demo": "tsx packages/server/src/demo/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/web"
   },
