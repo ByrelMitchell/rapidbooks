@@ -1,0 +1,634 @@
+/* RapidBooks: Windows-classic / QuickBooks 2003 look.
+   Every size is in rem or em so View > Zoom (root font-size) scales the whole UI. */
+
+:root {
+  --face: #d4d0c8;
+  --hilite: #ffffff;
+  --light: #e8e6e1;
+  --shadow: #808080;
+  --dark: #404040;
+  --navy: #0a246a;
+  --navy2: #a6caf0;
+  --inactive1: #808080;
+  --inactive2: #c0c0c0;
+  --desk: #5f8586;
+  --sel: #0a246a;
+  --sel-text: #ffffff;
+  --field: #ffffff;
+  --text: #000000;
+  --grey-text: #808080;
+  --error-bg: #ffffe1;
+  --error: #a00000;
+  --px: 0.0625rem; /* one classic pixel at 100% */
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Tahoma, Verdana, 'Segoe UI', sans-serif;
+  font-size: 0.9375rem;
+  color: var(--text);
+  background: var(--face);
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- Menu bar ---------- */
+
+.menubar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--face);
+  border-bottom: var(--px) solid var(--shadow);
+  box-shadow: inset 0 calc(-1 * var(--px)) var(--hilite);
+  padding: 0.125rem 0.25rem;
+  user-select: none;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu-title {
+  padding: 0.2rem 0.6rem;
+  cursor: default;
+  border: var(--px) solid transparent;
+}
+
+.menu-title:hover {
+  border-color: var(--hilite) var(--shadow) var(--shadow) var(--hilite);
+}
+
+.menu-title.open {
+  background: var(--sel);
+  color: var(--sel-text);
+  border-color: transparent;
+}
+
+.menu-drop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 16rem;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--light) var(--dark) var(--dark) var(--light);
+  box-shadow:
+    inset var(--px) var(--px) var(--hilite),
+    inset calc(-1 * var(--px)) calc(-1 * var(--px)) var(--shadow);
+  padding: 0.1875rem;
+  z-index: 10;
+}
+
+.menu-item {
+  display: flex;
+  gap: 2rem;
+  justify-content: space-between;
+  padding: 0.25rem 0.75rem 0.25rem 1.25rem;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.menu-item.hot {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.menu-item.disabled {
+  color: var(--grey-text);
+  text-shadow: var(--px) var(--px) var(--hilite);
+}
+
+.menu-key {
+  text-align: right;
+}
+
+.menu-sep {
+  margin: 0.25rem 0.125rem;
+  border-top: var(--px) solid var(--shadow);
+  border-bottom: var(--px) solid var(--hilite);
+}
+
+/* ---------- Desktop and status bar ---------- */
+
+.desktop {
+  position: relative;
+  z-index: 0;
+  flex: 1;
+  overflow: auto;
+  background: var(--desk);
+}
+
+.desktop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #d8e4e4;
+  font-size: 2.5rem;
+  font-weight: bold;
+  pointer-events: none;
+  text-align: center;
+  padding: 1rem;
+}
+
+.desktop-hint small {
+  font-size: 1rem;
+  font-weight: normal;
+  max-width: 36rem;
+}
+
+.statusbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.125rem;
+  background: var(--face);
+  border-top: var(--px) solid var(--hilite);
+  min-height: 1.75rem;
+}
+
+.statusbar > span {
+  padding: 0.125rem 0.5rem;
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+}
+
+.status-msg {
+  flex: 1;
+}
+
+.status-zoom {
+  min-width: 4.5rem;
+  text-align: right;
+}
+
+/* ---------- MDI windows ---------- */
+
+.win {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--light) var(--dark) var(--dark) var(--light);
+  box-shadow:
+    inset var(--px) var(--px) var(--hilite),
+    inset calc(-1 * var(--px)) calc(-1 * var(--px)) var(--shadow);
+  padding: 0.1875rem;
+  min-width: 16rem;
+  max-width: calc(100% - 0.5rem);
+}
+
+.win-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.1875rem 0.1875rem 0.1875rem 0.375rem;
+  background: linear-gradient(to right, var(--inactive1), var(--inactive2));
+  color: #d4d0c8;
+  font-weight: bold;
+  cursor: default;
+  user-select: none;
+  touch-action: none;
+}
+
+.win.active .win-title {
+  background: linear-gradient(to right, var(--navy), var(--navy2));
+  color: #ffffff;
+}
+
+.win-title-text {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.win-close {
+  width: 1.375rem;
+  height: 1.25rem;
+  padding: 0;
+  line-height: 1;
+  font-weight: bold;
+  font-size: 1rem;
+  color: #000;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--hilite) var(--dark) var(--dark) var(--hilite);
+  box-shadow: inset calc(-1 * var(--px)) calc(-1 * var(--px)) var(--shadow);
+}
+
+.win-close:active {
+  border-color: var(--dark) var(--hilite) var(--hilite) var(--dark);
+  box-shadow: inset var(--px) var(--px) var(--shadow);
+}
+
+.win-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+}
+
+/* ---------- Controls ---------- */
+
+.field {
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset var(--px) var(--px) var(--dark);
+  padding: 0.1875rem 0.3125rem;
+  font-size: 1rem;
+  border-radius: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.field:focus {
+  outline: none;
+  background: #ffffef;
+}
+
+.field:disabled {
+  background: var(--face);
+  color: var(--grey-text);
+}
+
+select.field {
+  padding: 0.125rem;
+}
+
+textarea.field {
+  resize: vertical;
+}
+
+.amount-field {
+  text-align: right;
+}
+
+.date-field {
+  width: 8.5rem;
+}
+
+.num-field {
+  width: 7rem;
+}
+
+.combo {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+.combo .combo-input {
+  flex: 1;
+}
+
+.combo.invalid .combo-input {
+  background: #ffe0e0;
+  color: var(--error);
+}
+
+.combo-arrow {
+  width: 1.25rem;
+  padding: 0;
+  font-size: 0.6rem;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--hilite) var(--dark) var(--dark) var(--hilite);
+  box-shadow: inset calc(-1 * var(--px)) calc(-1 * var(--px)) var(--shadow);
+}
+
+.combo-arrow:disabled {
+  color: var(--grey-text);
+}
+
+.combo-drop {
+  position: fixed;
+  z-index: 1000;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--field);
+  border: var(--px) solid #000;
+  font-size: 1rem;
+}
+
+.combo-opt {
+  padding: 0.125rem 0.375rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.combo-opt.hot {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.combo-opt.empty {
+  color: var(--grey-text);
+}
+
+.btn {
+  min-width: 6.5rem;
+  padding: 0.3rem 0.875rem;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--hilite) var(--dark) var(--dark) var(--hilite);
+  box-shadow:
+    inset var(--px) var(--px) var(--light),
+    inset calc(-1 * var(--px)) calc(-1 * var(--px)) var(--shadow);
+  border-radius: 0;
+  cursor: default;
+}
+
+.btn.default {
+  outline: var(--px) solid #000;
+}
+
+.btn:focus-visible,
+.btn:focus {
+  outline: var(--px) solid #000;
+  outline-offset: -0.3rem;
+}
+
+.btn.default:focus {
+  outline: var(--px) dotted #000;
+}
+
+.btn:active:not(:disabled) {
+  border-color: var(--dark) var(--hilite) var(--hilite) var(--dark);
+  box-shadow: inset var(--px) var(--px) var(--shadow);
+}
+
+.btn:disabled {
+  color: var(--grey-text);
+  text-shadow: var(--px) var(--px) var(--hilite);
+}
+
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.button-row.right {
+  justify-content: flex-end;
+}
+
+.button-row .spacer {
+  flex: 1;
+}
+
+.group-label {
+  font-weight: bold;
+}
+
+.msg-strip {
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border: var(--px) solid var(--shadow);
+}
+
+.msg-strip.error {
+  background: var(--error-bg);
+  color: var(--error);
+  font-weight: bold;
+}
+
+/* ---------- List view ---------- */
+
+.list-window {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.listview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset var(--px) var(--px) var(--dark);
+  scroll-padding-top: 2em;
+  font-size: 1rem;
+}
+
+.listview:focus {
+  outline: var(--px) dotted #000;
+  outline-offset: -0.1875rem;
+}
+
+.listview table,
+.line-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.listview th,
+.line-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--face);
+  font-weight: normal;
+  text-align: left;
+  padding: 0.1875rem 0.375rem;
+  border: var(--px) solid;
+  border-color: var(--hilite) var(--shadow) var(--shadow) var(--hilite);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listview td {
+  padding: 0.125rem 0.375rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+  user-select: none;
+}
+
+.listview tr.sel td {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.listview .inactive {
+  color: var(--grey-text);
+}
+
+.listview tr.sel .inactive {
+  color: #c0c0e0;
+}
+
+.listview-empty {
+  padding: 0.75rem;
+  color: var(--grey-text);
+}
+
+.al-right {
+  text-align: right !important;
+}
+
+.al-center {
+  text-align: center !important;
+}
+
+.ending {
+  font-weight: bold;
+}
+
+.ending-amount {
+  display: inline-block;
+  min-width: 8rem;
+  margin-left: 0.5rem;
+  padding: 0.1875rem 0.375rem;
+  text-align: right;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+}
+
+/* ---------- Dialogs and forms ---------- */
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.form-grid > label:not(.check) {
+  text-align: right;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.check input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+}
+
+.form-window {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-header {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  padding-bottom: 0.5rem;
+}
+
+.form-header label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.grid-wrap {
+  max-height: 24rem;
+  overflow-y: auto;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+}
+
+.line-grid td {
+  padding: 0;
+  border: var(--px) solid #c0c0c0;
+}
+
+.line-grid td .field {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.line-grid td .field:focus {
+  background: #ffffef;
+}
+
+.line-grid td .combo-arrow {
+  visibility: hidden;
+}
+
+.line-grid tr:focus-within .combo-arrow {
+  visibility: visible;
+}
+
+.line-grid tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--face);
+  padding: 0.25rem 0.375rem;
+  border: none;
+  border-top: var(--px) solid var(--shadow);
+}
+
+.total {
+  font-weight: bold;
+}
+
+.total.unbalanced {
+  color: var(--error);
+}
+
+.total-label {
+  font-weight: bold;
+}
+
+@media (max-width: 40rem) {
+  .win {
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+  }
+}

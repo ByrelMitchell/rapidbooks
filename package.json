@@ -1,0 +1,22 @@
+{
+  "name": "rapidbooks",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w @rapidbooks/server",
+    "dev:web": "npm run dev -w @rapidbooks/web",
+    "build": "npm run build -w @rapidbooks/web",
+    "start": "npm run start -w @rapidbooks/server",
+    "test": "vitest run",
+    "typecheck": "tsc -p packages/shared && tsc -p packages/server && tsc -p packages/web"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
