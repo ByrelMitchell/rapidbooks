@@ -108,6 +108,42 @@ export function percentOf(cents: number, bp: number): number {
   return Number(divRound(BigInt(cents) * scaled(bp, RATE_PLACES), 10000n * 10n ** RATE_PLACES));
 }
 
+const ONES = [
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+  'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const SCALES = ['', 'thousand', 'million', 'billion', 'trillion'];
+
+function under1000(n: number): string[] {
+  const out: string[] = [];
+  if (n >= 100) {
+    out.push(ONES[Math.floor(n / 100)], 'hundred');
+    n %= 100;
+  }
+  if (n >= 20) out.push(TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : ''));
+  else if (n > 0) out.push(ONES[n]);
+  return out;
+}
+
+/**
+ * The amount line of a check: 123456 -> "One thousand two hundred thirty-four and 56/100".
+ * Negative amounts are written as their absolute value.
+ */
+export function amountInWords(cents: number): string {
+  const abs = Math.abs(Math.round(cents));
+  let dollars = Math.floor(abs / 100);
+  const frac = (abs % 100).toString().padStart(2, '0');
+  const words: string[] = [];
+  if (dollars === 0) words.push('zero');
+  for (let i = 0; dollars > 0; i++, dollars = Math.floor(dollars / 1000)) {
+    const chunk = dollars % 1000;
+    if (chunk > 0) words.unshift(...under1000(chunk), ...(SCALES[i] ? [SCALES[i]] : []));
+  }
+  const s = words.join(' ');
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)} and ${frac}/100`;
+}
+
 /**
  * Format a rate held in cents that may carry fractions of a cent: at least two
  * decimals of dollars, more only when needed ("12.50", "0.0375").

@@ -116,9 +116,17 @@ export function deleteAccount(db: DB, id: number) {
   }
   const kids = db.prepare('SELECT COUNT(*) AS n FROM accounts WHERE parent_id = ?').get(id) as { n: number };
   if (kids.n > 0) throw new AppError(400, 'This account has subaccounts and cannot be deleted.');
-  const items = db.prepare('SELECT COUNT(*) AS n FROM items WHERE account_id = ?').get(id) as { n: number };
+  const items = db
+    .prepare('SELECT COUNT(*) AS n FROM items WHERE account_id = ? OR purchase_account_id = ?')
+    .get(id, id) as { n: number };
   if (items.n > 0) {
     throw new AppError(400, 'Items post to this account, so it cannot be deleted. Change those items first.');
+  }
+  const payroll = db
+    .prepare('SELECT COUNT(*) AS n FROM payroll_items WHERE expense_account_id = ? OR liability_account_id = ?')
+    .get(id, id) as { n: number };
+  if (payroll.n > 0) {
+    throw new AppError(400, 'Payroll items post to this account, so it cannot be deleted. Change those payroll items first.');
   }
   db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
 }

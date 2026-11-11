@@ -20,6 +20,7 @@ import { createItem, deleteItem, getItem, listItems, updateItem } from './lists/
 import { createName, deleteName, getName, listNames, updateName } from './lists/names';
 import { createTerms, deleteTerms, getTerms, listTerms, updateTerms } from './lists/terms';
 import type { MailerFactory } from './mail/send';
+import { registerPurchaseRoutes } from './routes/purchases';
 import { registerSalesRoutes } from './routes/sales';
 
 const Id = z.object({ id: z.coerce.number().int() });
@@ -49,9 +50,13 @@ export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactor
   app.get('/api/accounts/:id/register', (req) => getRegister(db, Id.parse(req.params).id));
 
   // Transactions
-  app.get('/api/txns/next-num', (req) => ({
-    num: nextNum(db, z.object({ type: z.string() }).parse(req.query).type),
-  }));
+  app.get('/api/txns/next-num', (req) => {
+    // account_id (optional): checks, bill payments and paychecks are numbered per bank account.
+    const q = z
+      .object({ type: z.string(), account_id: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().optional()) })
+      .parse(req.query);
+    return { num: nextNum(db, q.type, q.account_id ?? null) };
+  });
   app.get('/api/txns/:id', (req) => getTxn(db, Id.parse(req.params).id));
   app.post('/api/txns', (req) => saveTxn(db, TxnInput.parse(req.body)));
   app.put('/api/txns/:id', (req) => saveTxn(db, TxnInput.parse(req.body), Id.parse(req.params).id));
@@ -122,6 +127,9 @@ export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactor
 
   // Sales and receivables: forms' lookups, finance charges, statements, PDFs, e-mail
   registerSalesRoutes(app, db, opts.mailer);
+
+  // Purchases and banking: Pay Bills, check numbers and printing, payroll items
+  registerPurchaseRoutes(app, db);
 
   // The built web app, when there is one (in development Vite serves it instead).
   if (opts.webDist && existsSync(opts.webDist)) {

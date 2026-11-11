@@ -3,6 +3,7 @@ import {
   lineAmount,
   percentOf,
   type AnyTxn,
+  type BillPaymentInput,
   type CreditMemoInput,
   type DepositInput,
   type DocTxn,
@@ -34,13 +35,25 @@ import {
   txnRow,
   type TxnHeaderRow,
 } from './common';
+import {
+  buildBill,
+  buildBillPayment,
+  buildCheck,
+  buildPaycheck,
+  buildPurchaseOrder,
+  buildTransfer,
+  CHECK_TYPES,
+  getPurchTxn,
+  PURCH_TYPES,
+  reopenPurchaseOrders,
+} from './purchasing';
 
 // The posting engine. Every transaction type has a builder that turns the form's
 // input into ledger splits (plus, for documents, the header fields, lines and links
 // to store); saveTxn checks they balance and writes them. Nothing else writes to the
 // splits table.
 
-interface BuiltSplit {
+export interface BuiltSplit {
   account_id: number;
   amount: number; // cents, debit-positive
   name_id: number | null;
@@ -48,7 +61,7 @@ interface BuiltSplit {
 }
 
 /** Columns of txns written on every save. */
-interface Header {
+export interface Header {
   date: string;
   num: string;
   name_id: number | null;
@@ -68,9 +81,15 @@ interface Header {
   account_id: number | null;
   ar_account_id: number | null;
   total: number;
+  ap_account_id: number | null;
+  to_account_id: number | null;
+  expected_date: string;
+  closed: number;
+  period_from: string;
+  period_to: string;
 }
 
-interface StoredLine {
+export interface StoredLine {
   item_id: number | null;
   description: string;
   qty: number | null;
@@ -81,27 +100,30 @@ interface StoredLine {
   name_id: number | null;
   ref_no: string;
   pay_method: string;
+  payroll_item_id?: number | null;
 }
 
-interface BuiltLink {
+export interface BuiltLink {
   to_txn: number;
   amount: number;
   discount: number;
   discount_account_id: number | null;
 }
 
-interface Built {
+export interface Built {
   splits: BuiltSplit[];
   header: Header;
   lines?: StoredLine[]; // replaces the stored lines when present
-  links?: { kind: 'apply' | 'deposit'; list: BuiltLink[] }; // replaces outgoing links of that kind
-  minSplits: number;
+  links?: { kind: 'apply' | 'deposit' | 'po'; list: BuiltLink[] }; // replaces outgoing links of that kind
+  minSplits: number; // 0 for a non-posting document (purchase orders)
+  /** Runs inside the save, after splits, lines and links are written (no ledger writes). */
+  afterSave?: (txnId: number) => void;
 }
 
 /** The transaction being replaced, when editing. */
-type Old = TxnHeaderRow | undefined;
+export type Old = TxnHeaderRow | undefined;
 
-const blankHeader = (input: { date: string; num: string; name_id: number | null; memo: string }): Header => ({
+export const blankHeader = (input: { date: string; num: string; name_id: number | null; memo: string }): Header => ({
   date: input.date,
   num: input.num,
   name_id: input.name_id,
@@ -121,6 +143,12 @@ const blankHeader = (input: { date: string; num: string; name_id: number | null;
   account_id: null,
   ar_account_id: null,
   total: 0,
+  ap_account_id: null,
+  to_account_id: null,
+  expected_date: '',
+  closed: 0,
+  period_from: '',
+  period_to: '',
 });
 
 // ---------------------------------------------------------------------------
@@ -495,6 +523,13 @@ const builders: Builders = {
   CREDITMEMO: buildSalesDoc,
   PAYMENT: buildPayment,
   DEPOSIT: buildDeposit,
+  PURCHORD: buildPurchaseOrder,
+  BILL: buildBill,
+  BILLCREDIT: buildBill,
+  BILLPMT: buildBillPayment,
+  CHECK: buildCheck,
+  TRANSFER: buildTransfer,
+  PAYCHECK: buildPaycheck,
 };
 
 function build(db: DB, input: TxnInput, old: Old): Built {
@@ -517,6 +552,7 @@ function validate(db: DB, splits: BuiltSplit[], minSplits: number) {
 const HEADER_COLS = [
   'date', 'num', 'name_id', 'memo', 'terms_id', 'due_date', 'po_number', 'ship_date', 'ship_via', 'bill_addr',
   'ship_addr', 'message', 'to_print', 'to_email', 'pay_method', 'ref_no', 'account_id', 'ar_account_id', 'total',
+  'ap_account_id', 'to_account_id', 'expected_date', 'closed', 'period_from', 'period_to',
 ] as const;
 
 interface SaveOpts {
@@ -581,13 +617,14 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
     if (built.lines) {
       db.prepare('DELETE FROM lines WHERE txn_id = ?').run(txnId);
       const insLine = db.prepare(
-        `INSERT INTO lines (txn_id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no, pay_method)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO lines (txn_id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no,
+                            pay_method, payroll_item_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       built.lines.forEach((l, seq) =>
         insLine.run(
           txnId, seq, l.item_id, l.description, l.qty, l.rate, l.rate_is_percent ? 1 : 0, l.amount, l.account_id,
-          l.name_id, l.ref_no, l.pay_method,
+          l.name_id, l.ref_no, l.pay_method, l.payroll_item_id ?? null,
         ),
       );
     }
@@ -600,6 +637,7 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
         insLink.run(txnId, l.to_txn, built.links.kind, l.amount, l.discount, l.discount_account_id);
       }
     }
+    built.afterSave?.(txnId);
 
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       opts.repost ? 'repost' : old === undefined ? 'create' : 'update',
@@ -613,6 +651,7 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
 /** Rebuild a payment's splits from what is stored (after one of its applications went away). */
 function repostPayment(db: DB, id: number) {
   const p = txnRow(db, id)!;
+  if (p.type === 'BILLPMT') return repostBillPayment(db, id);
   const apps = db
     .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
     .all(id) as PaymentInput['applications'];
@@ -627,6 +666,29 @@ function repostPayment(db: DB, id: number) {
     ref_no: p.ref_no,
     account_id: p.account_id,
     ar_account_id: p.ar_account_id,
+    applications: apps,
+  };
+  saveTxn(db, input, id, { repost: true });
+}
+
+/** Rebuild a bill payment's splits from what is stored (after one of its applications went away). */
+function repostBillPayment(db: DB, id: number) {
+  const p = txnRow(db, id)!;
+  const apps = db
+    .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
+    .all(id) as BillPaymentInput['applications'];
+  const input: BillPaymentInput = {
+    type: 'BILLPMT',
+    date: p.date,
+    num: p.num,
+    to_print: !!p.to_print,
+    name_id: p.name_id,
+    memo: p.memo,
+    account_id: p.account_id,
+    ap_account_id: p.ap_account_id,
+    pay_method: p.pay_method === 'other' ? 'other' : 'check',
+    address: p.bill_addr,
+    amount: p.total,
     applications: apps,
   };
   saveTxn(db, input, id, { repost: true });
@@ -666,6 +728,7 @@ export function getTxn(db: DB, id: number): AnyTxn {
     splits,
   };
   if (row.type === 'GENJRNL') return base;
+  if (PURCH_TYPES.has(row.type)) return getPurchTxn(db, row, base);
 
   const lines = (db.prepare(`SELECT ${LINE_COLS} FROM lines WHERE txn_id = ? ORDER BY seq`).all(id) as (Omit<
     TxnLine,
@@ -711,15 +774,21 @@ export function deleteTxn(db: DB, id: number) {
     if (before.type === 'PAYMENT' && depositOf(db, id) !== null) {
       throw new AppError(400, 'This payment has been deposited. Remove it from the deposit first, then delete it.');
     }
-    // Payments that took a discount on this invoice must drop the discount posting.
+    // Payments that took a discount on this invoice or bill must drop the discount posting.
     const repost =
-      before.type === 'INVOICE'
+      before.type === 'INVOICE' || before.type === 'BILL'
         ? (db
             .prepare("SELECT DISTINCT from_txn FROM links WHERE kind = 'apply' AND to_txn = ? AND discount <> 0")
             .all(id) as { from_txn: number }[]).map((r) => r.from_txn)
         : [];
+    // Purchase orders received on this bill reopen.
+    const pos =
+      before.type === 'BILL'
+        ? (db.prepare("SELECT to_txn FROM links WHERE kind = 'po' AND from_txn = ?").all(id) as { to_txn: number }[]).map((r) => r.to_txn)
+        : [];
     db.prepare('DELETE FROM txns WHERE id = ?').run(id); // splits, lines and links go with it
     for (const p of repost) repostPayment(db, p);
+    reopenPurchaseOrders(db, pos);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       'delete',
       id,
@@ -738,7 +807,8 @@ export function removeApplication(db: DB, linkId: number) {
       | { id: number; from_txn: number; kind: string; discount: number }
       | undefined;
     if (!l) throw new AppError(404, 'That application no longer exists.');
-    if (l.kind !== 'apply') throw new AppError(400, 'To take a payment out of a deposit, edit the deposit.');
+    if (l.kind === 'deposit') throw new AppError(400, 'To take a payment out of a deposit, edit the deposit.');
+    if (l.kind === 'po') throw new AppError(400, 'To unlink a purchase order from a bill, edit the bill.');
     db.prepare('DELETE FROM links WHERE id = ?').run(linkId);
     if (l.discount !== 0) repostPayment(db, l.from_txn);
     else db.prepare('UPDATE txns SET version = version + 1 WHERE id = ?').run(l.from_txn);
@@ -769,16 +839,21 @@ export function setCleared(db: DB, splitId: number, cleared: boolean) {
 
 /**
  * The next number for a transaction type: one more than the highest numeric number in
- * use. Invoices and credit memos share one sequence, as in QuickBooks.
+ * use. Invoices and credit memos share one sequence, as in QuickBooks. Checks, bill
+ * payments and paychecks share one sequence per bank account (all bank accounts when
+ * accountId is not given).
  */
-export function nextNum(db: DB, type: string): string {
-  const types = type === 'INVOICE' || type === 'CREDITMEMO' ? ['INVOICE', 'CREDITMEMO'] : [type];
+export function nextNum(db: DB, type: string, accountId: number | null = null): string {
+  const isCheck = CHECK_TYPES.includes(type);
+  const types = type === 'INVOICE' || type === 'CREDITMEMO' ? ['INVOICE', 'CREDITMEMO'] : isCheck ? CHECK_TYPES : [type];
+  const acct = isCheck ? accountId : null;
   const r = db
     .prepare(
       `SELECT MAX(CAST(num AS INTEGER)) AS n FROM txns
-        WHERE type IN (${types.map(() => '?').join(', ')}) AND num GLOB '[0-9]*'`,
+        WHERE type IN (${types.map(() => '?').join(', ')}) AND num GLOB '[0-9]*'
+          AND (? IS NULL OR account_id = ?)`,
     )
-    .get(...types) as { n: number | null };
+    .get(...types, acct, acct) as { n: number | null };
   return String((r.n ?? 0) + 1);
 }
 

@@ -12,7 +12,13 @@ interface ItemRow {
   rate_is_percent: number;
   account_id: number | null;
   inactive: number;
+  purchase_description: string;
+  cost: number;
+  purchase_account_id: number | null;
 }
+
+/** Item types that can have a purchase side (cost and purchase account). */
+const PURCHASABLE = new Set(['SERVICE', 'PART', 'OTHER_CHARGE']);
 
 /** All items in item-list order (by type, then name, subitems under their parent). */
 export function listItems(db: DB): Item[] {
@@ -68,10 +74,33 @@ function getRow(db: DB, id: number): ItemRow {
   return row;
 }
 
-/** Validate, and return the input with fields that don't apply to its type cleared. */
-function normalize(db: DB, input: ItemInput, selfId: number | null): ItemInput {
+type NormalItem = ItemInput & { purchase_description: string; cost: number; purchase_account_id: number | null };
+
+/**
+ * Validate, and return the input with fields that don't apply to its type cleared.
+ * Purchase fields left out keep the stored values (`old`), or default when creating.
+ */
+function normalize(db: DB, input: ItemInput, selfId: number | null, old?: ItemRow): NormalItem {
   const t = itemType(input.type);
-  const out = { ...input, members: input.members.map((m) => ({ ...m })) };
+  const out: NormalItem = {
+    ...input,
+    members: input.members.map((m) => ({ ...m })),
+    purchase_description: input.purchase_description ?? old?.purchase_description ?? '',
+    cost: input.cost ?? old?.cost ?? 0,
+    purchase_account_id: input.purchase_account_id !== undefined ? input.purchase_account_id : (old?.purchase_account_id ?? null),
+  };
+
+  if (!PURCHASABLE.has(input.type)) {
+    out.purchase_description = '';
+    out.cost = 0;
+    out.purchase_account_id = null;
+  } else if (out.purchase_account_id !== null) {
+    const acct = db.prepare('SELECT type FROM accounts WHERE id = ?').get(out.purchase_account_id) as { type: string } | undefined;
+    if (!acct) throw new AppError(400, 'The purchase account for this item no longer exists.');
+    if (acct.type === 'AR' || acct.type === 'AP') {
+      throw new AppError(400, 'An item cannot be bought into an Accounts Receivable or Accounts Payable account.');
+    }
+  }
 
   if (input.parent_id !== null) {
     const parent = db.prepare('SELECT type FROM items WHERE id = ?').get(input.parent_id) as { type: string } | undefined;
@@ -140,8 +169,9 @@ function writeMembers(db: DB, groupId: number, input: ItemInput) {
   input.members.forEach((m, seq) => ins.run(groupId, m.item_id, m.qty, seq));
 }
 
-const values = (i: ItemInput) => [
+const values = (i: NormalItem) => [
   i.name, i.parent_id, i.type, i.description, i.rate, i.rate_is_percent ? 1 : 0, i.account_id, i.inactive ? 1 : 0,
+  i.purchase_description, i.cost, i.purchase_account_id,
 ];
 
 export function createItem(db: DB, input: ItemInput): number {
@@ -151,8 +181,9 @@ export function createItem(db: DB, input: ItemInput): number {
     try {
       const r = db
         .prepare(
-          `INSERT INTO items (name, parent_id, type, description, rate, rate_is_percent, account_id, inactive)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO items (name, parent_id, type, description, rate, rate_is_percent, account_id, inactive,
+                              purchase_description, cost, purchase_account_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(...values(item));
       id = Number(r.lastInsertRowid);
@@ -166,7 +197,7 @@ export function createItem(db: DB, input: ItemInput): number {
 
 export function updateItem(db: DB, id: number, input: ItemInput) {
   const old = getRow(db, id);
-  const item = normalize(db, input, id);
+  const item = normalize(db, input, id, old);
   if (old.type !== item.type) {
     const kids = db.prepare('SELECT COUNT(*) AS n FROM items WHERE parent_id = ?').get(id) as { n: number };
     if (kids.n > 0) throw new AppError(400, 'This item has subitems, so its type cannot be changed.');
@@ -179,7 +210,8 @@ export function updateItem(db: DB, id: number, input: ItemInput) {
     try {
       db.prepare(
         `UPDATE items SET name = ?, parent_id = ?, type = ?, description = ?, rate = ?, rate_is_percent = ?,
-                          account_id = ?, inactive = ? WHERE id = ?`,
+                          account_id = ?, inactive = ?, purchase_description = ?, cost = ?,
+                          purchase_account_id = ? WHERE id = ?`,
       ).run(...values(item), id);
     } catch (e) {
       nameTaken(e);

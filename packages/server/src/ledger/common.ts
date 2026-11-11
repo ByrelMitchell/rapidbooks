@@ -132,6 +132,12 @@ export interface TxnHeaderRow {
   ar_account_id: number | null;
   is_finance_charge: number;
   total: number;
+  ap_account_id: number | null;
+  to_account_id: number | null;
+  expected_date: string;
+  closed: number;
+  period_from: string;
+  period_to: string;
 }
 
 export function txnRow(db: DB, id: number): TxnHeaderRow | undefined {

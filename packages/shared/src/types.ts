@@ -34,6 +34,13 @@ export const TXN_TYPE_LABELS: Record<string, string> = {
   CREDITMEMO: 'Credit Memo',
   PAYMENT: 'Payment',
   DEPOSIT: 'Deposit',
+  PURCHORD: 'Purchase Order',
+  BILL: 'Bill',
+  BILLCREDIT: 'Bill Credit',
+  BILLPMT: 'Bill Payment',
+  CHECK: 'Check',
+  TRANSFER: 'Transfer',
+  PAYCHECK: 'Paycheck',
 };
 
 /** The short type codes QuickBooks shows in registers and reports. */
@@ -43,6 +50,13 @@ export const TXN_TYPE_SHORT: Record<string, string> = {
   CREDITMEMO: 'CREDMEM',
   PAYMENT: 'PMT',
   DEPOSIT: 'DEP',
+  PURCHORD: 'PURCHORD',
+  BILL: 'BILL',
+  BILLCREDIT: 'BILLCRED',
+  BILLPMT: 'BILLPMT',
+  CHECK: 'CHK',
+  TRANSFER: 'TRANSFR',
+  PAYCHECK: 'PAY CHK',
 };
 
 export const AccountInput = z.object({
@@ -203,12 +217,183 @@ export const DepositInput = z.object({
 });
 export type DepositInput = z.infer<typeof DepositInput>;
 
+// ---------------------------------------------------------------------------
+// Purchases and banking: inputs (Phase 4)
+
+/**
+ * A line on the Expenses tab (bills, bill credits, checks). Posts its amount to the
+ * account (debit on a bill or check, credit on a bill credit). A row with no account
+ * and a zero amount is a blank row and is ignored.
+ */
+export const ExpenseLineInput = z.object({
+  account_id: z.number().int().nullable().default(null),
+  amount: z.number().int().default(0), // cents; a negative line is allowed if the total stays >= 0
+  memo: z.string().default(''),
+  name_id: z.number().int().nullable().default(null), // Customer:Job, optional
+});
+export type ExpenseLineInput = z.infer<typeof ExpenseLineInput>;
+
+/**
+ * A line on the Items tab (bills, bill credits, checks) or of a purchase order.
+ * amount = qty × rate (rounded half away from zero) unless amount is given; a blank
+ * qty counts as 1. rate is the item's cost in cents (up to 3 decimals, like sales rates).
+ * On bills, credits and checks the line posts to the item's purchase account.
+ * A line with no item is a description-only line; its amount must be 0.
+ */
+export const ItemLineInput = z.object({
+  item_id: z.number().int().nullable().default(null),
+  description: z.string().default(''),
+  qty: z.number().finite().nullable().default(null),
+  rate: Rate.nullable().default(null),
+  amount: z.number().int().nullable().default(null), // cents; null = computed
+  name_id: z.number().int().nullable().default(null), // Customer:Job, optional
+});
+export type ItemLineInput = z.infer<typeof ItemLineInput>;
+
+/** Create Purchase Orders. Non-posting: it writes no splits. */
+export const PurchaseOrderInput = z.object({
+  type: z.enum(['PURCHORD']),
+  date: IsoDate,
+  num: z.string().default(''), // P.O. No. (own sequence)
+  name_id: z.number().int().nullable().default(null), // the vendor; required
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  address: z.string().default(''), // the Vendor box
+  ship_addr: z.string().default(''), // the Ship To box
+  expected_date: OptionalDate,
+  message: z.string().default(''), // vendor message, printed on the P.O.
+  closed: z.boolean().default(false),
+  to_print: z.boolean().default(false),
+  lines: z.array(ItemLineInput).default([]),
+});
+export type PurchaseOrderInput = z.infer<typeof PurchaseOrderInput>;
+
+const BillFields = {
+  date: IsoDate,
+  num: z.string().default(''), // ignored: a bill's number is its ref_no
+  ref_no: z.string().default(''), // Ref. No. (the vendor's invoice number)
+  name_id: z.number().int().nullable().default(null), // the vendor; required
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  ap_account_id: z.number().int().nullable().default(null), // null = the system Accounts Payable account
+  terms_id: z.number().int().nullable().default(null),
+  due_date: OptionalDate, // '' = from the terms (bills only)
+  address: z.string().default(''),
+  expenses: z.array(ExpenseLineInput).default([]),
+  items: z.array(ItemLineInput).default([]),
+};
+
+/** Enter Bills: Dr each line's account, Cr A/P. */
+export const BillInput = z.object({
+  type: z.enum(['BILL']),
+  ...BillFields,
+  po_ids: z.array(z.number().int()).default([]), // purchase orders received on this bill; they are closed
+});
+export type BillInput = z.infer<typeof BillInput>;
+
+/** Enter Bills with Credit selected: Dr A/P, Cr each line's account. */
+export const BillCreditInput = z.object({ type: z.enum(['BILLCREDIT']), ...BillFields });
+export type BillCreditInput = z.infer<typeof BillCreditInput>;
+
+/**
+ * One bill payment (a check or other payment to one vendor): Dr A/P, Cr bank for the
+ * amount; each discount Dr A/P, Cr its discount account. Usually made by Pay Bills
+ * (POST /api/pay-bills); also accepted by POST/PUT /api/txns for editing.
+ * applications[].txn_id is a bill.
+ */
+export const BillPaymentInput = z.object({
+  type: z.enum(['BILLPMT']),
+  date: IsoDate,
+  num: z.string().default(''), // check number; '' when to be printed or not a check
+  to_print: z.boolean().default(false),
+  name_id: z.number().int().nullable().default(null), // the vendor; required
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  account_id: z.number().int().nullable().default(null), // the bank (or credit card) account; required
+  ap_account_id: z.number().int().nullable().default(null),
+  pay_method: z.enum(['check', 'other']).default('check'),
+  address: z.string().default(''),
+  amount: z.number().int(), // cents, >= the total applied
+  applications: z.array(ApplicationInput).default([]),
+});
+export type BillPaymentInput = z.infer<typeof BillPaymentInput>;
+
+/** Write Checks: Dr each line's account, Cr the bank account. */
+export const CheckInput = z.object({
+  type: z.enum(['CHECK']),
+  date: IsoDate,
+  num: z.string().default(''), // check number; '' when to be printed
+  to_print: z.boolean().default(false),
+  account_id: z.number().int().nullable().default(null), // the bank account; required
+  name_id: z.number().int().nullable().default(null), // payee: any kind of name, optional
+  address: z.string().default(''),
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  expenses: z.array(ExpenseLineInput).default([]),
+  items: z.array(ItemLineInput).default([]),
+});
+export type CheckInput = z.infer<typeof CheckInput>;
+
+/** Transfer Funds: Dr to, Cr from. */
+export const TransferInput = z.object({
+  type: z.enum(['TRANSFER']),
+  date: IsoDate,
+  num: z.string().default(''),
+  name_id: z.number().int().nullable().default(null), // unused, kept for symmetry
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  from_account_id: z.number().int().nullable().default(null),
+  to_account_id: z.number().int().nullable().default(null),
+  amount: z.number().int(), // cents, > 0
+});
+export type TransferInput = z.infer<typeof TransferInput>;
+
+/**
+ * One line of a paycheck. amount = hours × rate when amount is null and both are given.
+ * Deductions are entered as positive amounts; they are subtracted from net pay.
+ */
+export const PayLineInput = z.object({
+  payroll_item_id: z.number().int(),
+  hours: z.number().finite().nullable().default(null),
+  rate: Rate.nullable().default(null), // cents per hour
+  amount: z.number().int().nullable().default(null),
+});
+export type PayLineInput = z.infer<typeof PayLineInput>;
+
+/**
+ * A manually entered paycheck. Net pay = earnings - deductions (must be >= 0).
+ * Posts: Dr each earning's expense account; Cr each deduction's liability account;
+ * Cr the bank for net pay; each company contribution Dr expense, Cr liability.
+ */
+export const PaycheckInput = z.object({
+  type: z.enum(['PAYCHECK']),
+  date: IsoDate,
+  num: z.string().default(''), // check number; '' when to be printed
+  to_print: z.boolean().default(false),
+  account_id: z.number().int().nullable().default(null), // the bank account; required
+  name_id: z.number().int().nullable().default(null), // the employee; required
+  address: z.string().default(''),
+  memo: z.string().default(''),
+  version: z.number().int().optional(),
+  period_from: OptionalDate,
+  period_to: OptionalDate,
+  lines: z.array(PayLineInput).default([]),
+});
+export type PaycheckInput = z.infer<typeof PaycheckInput>;
+
 export const TxnInput = z.discriminatedUnion('type', [
   GenJrnlInput,
   InvoiceInput,
   CreditMemoInput,
   PaymentInput,
   DepositInput,
+  PurchaseOrderInput,
+  BillInput,
+  BillCreditInput,
+  BillPaymentInput,
+  CheckInput,
+  TransferInput,
+  PaycheckInput,
 ]);
 export type TxnInput = z.infer<typeof TxnInput>;
 export type TxnType = TxnInput['type'];
@@ -297,7 +482,90 @@ export interface DocTxn extends Txn {
   payment_ids: number[]; // DEPOSIT only
 }
 
-export type AnyTxn = Txn | DocTxn;
+/** A link as seen from a purchase or banking transaction. */
+export interface PurchLink extends Omit<TxnLink, 'kind'> {
+  /**
+   * apply: bill payment or bill credit -> bill (amount applied, plus any discount)
+   * po:    bill -> purchase order received on it
+   */
+  kind: 'apply' | 'po';
+}
+
+/** A stored Expenses-tab line. */
+export interface ExpenseLine {
+  id: number;
+  seq: number;
+  account_id: number;
+  amount: number; // cents
+  memo: string;
+  name_id: number | null; // Customer:Job
+}
+
+/** A stored Items-tab line, or a purchase order line. */
+export interface ItemLine {
+  id: number;
+  seq: number;
+  item_id: number | null;
+  description: string;
+  qty: number | null;
+  rate: number | null; // cost, cents (possibly fractional)
+  amount: number; // cents
+  name_id: number | null; // Customer:Job
+  account_id: number | null; // the account it posted to (null on purchase orders)
+}
+
+/** A stored paycheck line. */
+export interface PayLine {
+  id: number;
+  seq: number;
+  payroll_item_id: number;
+  name: string; // the payroll item's name
+  kind: PayrollItemKind;
+  hours: number | null;
+  rate: number | null;
+  amount: number; // cents, as entered (deductions positive)
+}
+
+export interface PaycheckTotals {
+  earnings: number;
+  deductions: number;
+  company: number; // employer-paid contributions
+  net: number; // earnings - deductions = the check amount
+}
+
+/** PURCHORD, BILL, BILLCREDIT, BILLPMT, CHECK, TRANSFER and PAYCHECK as returned by GET /api/txns/:id. */
+export interface PurchTxn extends Txn {
+  type: 'PURCHORD' | 'BILL' | 'BILLCREDIT' | 'BILLPMT' | 'CHECK' | 'TRANSFER' | 'PAYCHECK';
+  account_id: number | null; // BILLPMT, CHECK, PAYCHECK: the bank account; TRANSFER: from
+  to_account_id: number | null; // TRANSFER: to
+  ap_account_id: number | null; // BILL, BILLCREDIT, BILLPMT
+  terms_id: number | null; // BILL, BILLCREDIT
+  due_date: string; // BILL ('' otherwise)
+  ref_no: string; // BILL, BILLCREDIT
+  address: string; // vendor / payee address
+  ship_addr: string; // PURCHORD
+  expected_date: string; // PURCHORD
+  message: string; // PURCHORD: vendor message
+  closed: boolean; // PURCHORD
+  to_print: boolean; // CHECK, BILLPMT, PAYCHECK (and PURCHORD)
+  pay_method: '' | 'check' | 'other'; // BILLPMT
+  period_from: string; // PAYCHECK
+  period_to: string; // PAYCHECK
+  expenses: ExpenseLine[]; // BILL, BILLCREDIT, CHECK
+  items: ItemLine[]; // PURCHORD, BILL, BILLCREDIT, CHECK
+  pay_lines: PayLine[]; // PAYCHECK
+  links_out: PurchLink[]; // bill payment/credit -> bills; bill -> purchase orders
+  links_in: PurchLink[]; // bill <- payments/credits; purchase order <- bills
+  /** PO total, bill/credit total, payment/check/transfer amount, paycheck net pay. */
+  total: number;
+  open_balance: number | null; // BILL only
+  unapplied: number | null; // BILLCREDIT and BILLPMT only
+  po_ids: number[]; // BILL: purchase orders received on it
+  bill_ids: number[]; // PURCHORD: bills it was received on
+  paycheck: PaycheckTotals | null; // PAYCHECK only
+}
+
+export type AnyTxn = Txn | DocTxn | PurchTxn;
 
 /** A transaction found by type and number. */
 export interface TxnRef {
@@ -632,6 +900,14 @@ export const ItemInput = z.object({
   account_id: z.number().int().nullable().default(null), // required unless SUBTOTAL or GROUP
   inactive: z.boolean().default(false),
   members: z.array(GroupMemberInput).default([]), // GROUP only, in order
+  /*
+   * Purchase side (Phase 4), for SERVICE, PART and OTHER_CHARGE items. Optional so that
+   * existing callers keep working: left out on create they default to '', 0 and null;
+   * left out on update they keep their stored values.
+   */
+  purchase_description: z.string().optional(), // description on purchase forms
+  cost: Rate.optional(), // cents, up to 3 decimals, like rate
+  purchase_account_id: z.number().int().nullable().optional(), // expense or COGS account for bills and checks
 });
 export type ItemInput = z.infer<typeof ItemInput>;
 
@@ -641,12 +917,15 @@ export interface GroupMember {
   seq: number;
 }
 
-export interface Item extends Omit<ItemInput, 'members'> {
+export interface Item extends Omit<ItemInput, 'members' | 'purchase_description' | 'cost' | 'purchase_account_id'> {
   id: number;
   full_name: string; // Parent:Child
   depth: number;
   type_label: string;
   members: GroupMember[];
+  purchase_description: string;
+  cost: number; // cents, up to 3 decimals
+  purchase_account_id: number | null;
 }
 
 /** What the IIF list importer did. */
@@ -663,4 +942,148 @@ export interface ImportResult {
   };
   ignored_record_types: string[];
   warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Purchases and banking: lists, payroll items and responses (Phase 4)
+
+export const PAYROLL_ITEM_KINDS = [
+  { code: 'earning', label: 'Earning', needsExpense: true, needsLiability: false },
+  { code: 'deduction', label: 'Deduction', needsExpense: false, needsLiability: true },
+  { code: 'company', label: 'Company Contribution', needsExpense: true, needsLiability: true },
+] as const;
+export type PayrollItemKind = (typeof PAYROLL_ITEM_KINDS)[number]['code'];
+const PAYROLL_KIND_CODES = PAYROLL_ITEM_KINDS.map((k) => k.code) as [PayrollItemKind, ...PayrollItemKind[]];
+
+export const PayrollItemInput = z.object({
+  name: z.string().trim().min(1, 'Enter a name for the payroll item.'),
+  kind: z.enum(PAYROLL_KIND_CODES),
+  expense_account_id: z.number().int().nullable().default(null), // earnings and company contributions
+  liability_account_id: z.number().int().nullable().default(null), // deductions and company contributions
+  inactive: z.boolean().default(false),
+});
+export type PayrollItemInput = z.infer<typeof PayrollItemInput>;
+
+export interface PayrollItem extends PayrollItemInput {
+  id: number;
+  kind_label: string;
+}
+
+/** An open purchase order, for the Enter Bills "receive against a P.O." list. */
+export interface OpenPurchaseOrder {
+  id: number;
+  num: string;
+  date: string;
+  expected_date: string;
+  name_id: number;
+  full_name: string;
+  memo: string;
+  total: number;
+}
+
+/** A bill with an open balance, for Pay Bills. */
+export interface UnpaidBill {
+  id: number;
+  ref_no: string;
+  date: string;
+  due_date: string;
+  name_id: number;
+  full_name: string;
+  ap_account_id: number;
+  memo: string;
+  total: number; // original amount
+  open_balance: number; // not counting the payment given as payment_id, if any
+  applied_by_payment: number; // amount applied by that payment (0 without payment_id)
+  discount_by_payment: number;
+  terms_id: number | null;
+  discount_pct: number; // basis points from the bill's terms (0 = none)
+  discount_date: string | null; // last day the terms discount applies
+  /** The terms discount on the open balance if paid on pay_date (0 when past the discount date). */
+  suggested_discount: number;
+  credits_available: number; // the vendor's unapplied credits and payments, cents
+}
+
+/** An unapplied bill credit or bill payment of a vendor. */
+export interface VendorCredit {
+  id: number;
+  type: 'BILLCREDIT' | 'BILLPMT';
+  num: string; // ref no. of a credit, check number of a payment
+  date: string;
+  name_id: number;
+  full_name: string;
+  ap_account_id: number;
+  memo: string;
+  total: number;
+  unapplied: number;
+}
+
+/**
+ * Pay Bills. Creates one BILLPMT per vendor (and A/P account), in vendor-name order.
+ * Credits are applied first (links only, nothing posted), then the payments.
+ */
+export const PayBillsInput = z.object({
+  date: IsoDate,
+  account_id: z.number().int(), // pay from: bank account (or credit card when method is 'other')
+  method: z.enum(['check', 'other']).default('check'),
+  to_print: z.boolean().default(false), // checks only: mark the checks to be printed (no numbers)
+  first_check_num: z.string().default(''), // checks not to be printed: first number ('' = the next number)
+  memo: z.string().default(''),
+  payments: z
+    .array(
+      z.object({
+        bill_id: z.number().int(),
+        amount: z.number().int().min(0, 'An amount paid cannot be negative.').default(0),
+        discount: z.number().int().min(0, 'A discount cannot be negative.').default(0),
+        discount_account_id: z.number().int().nullable().default(null), // required when discount > 0
+      }),
+    )
+    .default([]),
+  credits: z
+    .array(
+      z.object({
+        credit_id: z.number().int(), // a BILLCREDIT, or a BILLPMT with an unapplied amount
+        bill_id: z.number().int(),
+        amount: z.number().int().positive('Enter an amount of credit to apply.'),
+      }),
+    )
+    .default([]),
+});
+export type PayBillsInput = z.infer<typeof PayBillsInput>;
+
+export interface PayBillsResult {
+  payments: { id: number; name_id: number; num: string; amount: number }[];
+}
+
+/** A check, bill payment or paycheck marked To be printed. */
+export interface CheckToPrint {
+  id: number;
+  type: 'CHECK' | 'BILLPMT' | 'PAYCHECK';
+  date: string;
+  account_id: number;
+  name_id: number | null;
+  full_name: string;
+  amount: number;
+}
+
+export const AssignCheckNumbersInput = z.object({
+  txn_ids: z.array(z.number().int()).min(1, 'Choose at least one check.'), // numbered in this order
+  first_num: z.string().trim().regex(/^\d+$/, 'Enter the first check number (digits only).'),
+});
+export type AssignCheckNumbersInput = z.infer<typeof AssignCheckNumbersInput>;
+
+/** Whether a check number is already used on a bank account (a warning, not a refusal). */
+export interface CheckNumUse {
+  used: boolean;
+  txns: TxnRef[];
+}
+
+/** Paycheck totals per employee and payroll item over a date range. */
+export interface PayrollSummaryRow {
+  employee_id: number;
+  employee: string;
+  payroll_item_id: number;
+  payroll_item: string;
+  kind: PayrollItemKind;
+  hours: number;
+  amount: number; // cents, deductions positive
 }

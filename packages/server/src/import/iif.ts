@@ -615,6 +615,29 @@ function importItems(
       }
     }
 
+    // The purchase side: PURCHASEDESC, COST and COGSACCNT (the expense or COGS account
+    // QuickBooks posts purchases of the item to).
+    let purchase_description = '';
+    let cost = 0;
+    let purchase_account_id: number | null = null;
+    if (type === 'SERVICE' || type === 'PART' || type === 'OTHER_CHARGE') {
+      purchase_description = f.PURCHASEDESC ?? '';
+      const costText = (f.COST ?? '').trim();
+      if (costText !== '') {
+        const raw = parseDecimal(costText, 5);
+        if (raw === null) warn(`Item "${full}": the cost "${costText}" is not an amount, so the cost was left at 0.`);
+        else cost = raw / 1000;
+      }
+      const cogs = (f.COGSACCNT ?? '').trim();
+      if (cogs !== '') {
+        const acct = accounts.get(key(cogs));
+        if (!acct) warn(`Item "${full}": its purchase account "${cogs}" was not found among the imported accounts, so it was left blank.`);
+        else if (acct.type === 'AR' || acct.type === 'AP') {
+          warn(`Item "${full}": its purchase account "${cogs}" is a receivable or payable account, so it was left blank.`);
+        } else purchase_account_id = acct.id;
+      }
+    }
+
     try {
       const id = createItem(
         db,
@@ -627,6 +650,9 @@ function importItems(
           rate_is_percent,
           account_id,
           inactive: yes(f.HIDDEN),
+          purchase_description,
+          cost,
+          purchase_account_id,
         }),
       );
       byFull.set(key(full), { id, type });

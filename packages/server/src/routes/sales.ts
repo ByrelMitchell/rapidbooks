@@ -32,6 +32,7 @@ import {
   smtpMailer,
   type MailerFactory,
 } from '../mail/send';
+import { isPurchasePrintable, loadPurchasePrintable, purchaseFileName, renderPurchasePdf } from '../pdf/check';
 import { docFileName, loadSalesDoc, renderSalesDocPdf } from '../pdf/invoice';
 import { renderStatementPdf } from '../pdf/statement';
 
@@ -55,6 +56,13 @@ export function registerSalesRoutes(app: FastifyInstance, db: DB, mailer: Mailer
   });
   app.get('/api/txns/:id/pdf', async (req, reply) => {
     const id = Id.parse(req.params).id;
+    // Purchase orders and check records (Phase 4) print from pdf/check.ts.
+    const type = (db.prepare('SELECT type FROM txns WHERE id = ?').get(id) as { type: string } | undefined)?.type;
+    if (type && isPurchasePrintable(type)) {
+      const p = loadPurchasePrintable(db, id);
+      const pdf = await renderPurchasePdf(db, id);
+      return reply.type('application/pdf').header('Content-Disposition', pdfName(purchaseFileName(p))).send(pdf);
+    }
     const t = loadSalesDoc(db, id);
     const pdf = await renderSalesDocPdf(db, id);
     return reply.type('application/pdf').header('Content-Disposition', pdfName(docFileName(t))).send(pdf);
