@@ -23,10 +23,15 @@ export async function openRegister(desk: Desktop) {
   }
 }
 
+/** Ctrl keys that work only in some windows: what to say when the active window has no use for them. */
+const ONLY_IN: Record<string, string> = {
+  KeyY: 'Ctrl+Y shows the transaction journal of the transaction in the active window (save it first).',
+  KeyH: 'Ctrl+H shows the history of the transaction in the active window (save it first).',
+  KeyP: 'Ctrl+P prints the form or report in the active window.',
+};
+
+/** QuickBooks keys whose feature RapidBooks does not have. */
 const NOT_YET: Record<string, string> = {
-  KeyY: 'Transaction Journal',
-  KeyH: 'Transaction History',
-  KeyP: 'Print',
   KeyG: 'Go to Transfer',
   KeyT: 'The Memorized Transaction List',
   KeyM: 'Memorize Transaction',
@@ -129,6 +134,11 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         if (code === 'KeyW') {
           e.preventDefault();
           d.open('check', { id: null });
+          return;
+        }
+        if (ONLY_IN[code]) {
+          e.preventDefault();
+          d.setStatus(ONLY_IN[code]);
           return;
         }
         const feature = NOT_YET[code];

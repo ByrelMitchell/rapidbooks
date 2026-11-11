@@ -19,6 +19,7 @@ import { DateField } from '../controls/DateField';
 import { itemMap, LineGrid, linesForCompare, linesTotal, padLines, type GridLine, type LineGridHandle } from '../controls/LineGrid';
 import { nameQuickFill, termsQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
@@ -146,6 +147,7 @@ export function EnterBills({ winId, props }: WinProps) {
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'BILL' && t.type !== 'BILLCREDIT') {
         setError('That transaction is not a bill or a bill credit.');
         return false;

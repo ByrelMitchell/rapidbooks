@@ -79,29 +79,32 @@ export function Register({ winId, props }: WinProps) {
   const debit = (r: RegisterRow) => (r.amount > 0 ? formatMoney(r.amount) : '');
   const natural = (cents: number) => (debitNormal ? cents : -cents);
 
+  // Fixed widths for the dates, numbers and amounts; Name and Account share the rest with Memo
+  // by percentage, and the table never gets narrower than .register-table's minimum, so Memo
+  // keeps real room (the list scrolls sideways instead when the window is made small or zoomed).
   const columns: Column<RegisterRow>[] = [
-    { key: 'date', title: 'Date', width: '7rem', render: (r) => formatUsDate(r.date) },
-    { key: 'num', title: 'Number', width: '5rem', render: (r) => r.num },
-    { key: 'type', title: 'Type', width: '6rem', render: (r) => TXN_TYPE_SHORT[r.type] ?? r.type },
-    { key: 'name', title: 'Name', width: '9rem', render: (r) => r.name ?? '' },
+    { key: 'date', title: 'Date', width: '6.5rem', render: (r) => formatUsDate(r.date) },
+    { key: 'num', title: 'Number', width: '4.5rem', render: (r) => r.num },
+    { key: 'type', title: 'Type', width: '5rem', render: (r) => TXN_TYPE_SHORT[r.type] ?? r.type },
+    { key: 'name', title: 'Name', width: '13%', render: (r) => r.name ?? '' },
     {
       key: 'account',
       title: 'Account',
-      width: '11rem',
+      width: '14%',
       render: (r) => (r.other_account_id === null ? '-split-' : names.get(r.other_account_id) ?? ''),
     },
     { key: 'memo', title: 'Memo', render: (r) => r.memo },
-    { key: 'left', title: leftTitle, width: '7rem', align: 'right', render: credit },
+    { key: 'left', title: leftTitle, width: '6.5rem', align: 'right', render: credit },
     {
       key: 'cleared',
       title: '✓',
-      width: '2rem',
+      width: '1.75rem',
       align: 'center',
       render: (r) => (r.cleared ? '✓' : ''),
       onClick: (r) => void toggleCleared(r),
     },
-    { key: 'right', title: rightTitle, width: '7rem', align: 'right', render: debit },
-    { key: 'balance', title: 'Balance', width: '8rem', align: 'right', render: (r) => formatMoney(natural(r.balance)) },
+    { key: 'right', title: rightTitle, width: '6.5rem', align: 'right', render: debit },
+    { key: 'balance', title: 'Balance', width: '7.5rem', align: 'right', render: (r) => formatMoney(natural(r.balance)) },
   ];
 
   const ending = rows.length ? rows[rows.length - 1].balance : 0;
@@ -118,6 +121,7 @@ export function Register({ winId, props }: WinProps) {
         onActivate={openTxn}
         emptyText={data ? 'There are no transactions in this account.' : 'Loading...'}
         label="Register"
+        tableClass="register-table"
       />
       <div className="button-row">
         <button type="button" className="btn" onClick={newEntry} title="Ctrl+N">

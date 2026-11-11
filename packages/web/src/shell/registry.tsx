@@ -2,6 +2,7 @@ import type { ComponentType } from 'react';
 import { CompanyInfo } from '../forms/CompanyInfo';
 import { CreateStatements, StatementPreview } from '../forms/CreateStatements';
 import { FinanceCharges, FinanceChargeSettingsDialog } from '../forms/FinanceCharges';
+import { ImportedTxn } from '../forms/ImportedTxn';
 import { JournalEntry } from '../forms/JournalEntry';
 import { MakeDeposits, PaymentsToDeposit } from '../forms/MakeDeposits';
 import { PaymentDiscount, PaymentHistory } from '../forms/PaymentExtras';
@@ -38,6 +39,8 @@ import { MemorizeDialog, MemorizedList } from '../reports/Memorized';
 import { ModifyReport } from '../reports/ModifyReport';
 import { ReportFinder } from '../reports/ReportFinder';
 import { ReportWindow } from '../reports/ReportWindow';
+import { KeyboardHelp } from './KeyboardHelp';
+import { Navigator } from './Navigator';
 
 /** What every window component receives. */
 export interface WinProps {
@@ -59,6 +62,11 @@ export const registry: Registry = {
   account: { component: AccountDialog, title: 'New Account', width: 34 },
   register: { component: Register, title: 'Register', width: 78, height: 30 },
   journal: { component: JournalEntry, title: 'Make General Journal Entries', width: 56 },
+  // A transaction imported "as posted" from QuickBooks (or a QuickBooks type with no form): its splits.
+  imported: { component: ImportedTxn, title: 'Imported Transaction', width: 66 },
+  // Company > Navigator (opened at start-up) and Help > Keyboard Shortcuts
+  navigator: { component: Navigator, title: 'Company Navigator', width: 60 },
+  keys: { component: KeyboardHelp, title: 'Keyboard Shortcuts', width: 58, height: 34 },
   company: { component: CompanyInfo, title: 'Company Information', width: 36 },
   customers: { component: CustomerList, title: 'Customer:Job List', width: 50, height: 30 },
   vendors: { component: VendorList, title: 'Vendor List', width: 40, height: 28 },

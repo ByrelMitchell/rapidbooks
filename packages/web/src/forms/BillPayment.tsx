@@ -4,6 +4,7 @@ import { api, errorMessage, useData } from '../api';
 import { AmountField, parseAmount } from '../controls/AmountField';
 import { DateField } from '../controls/DateField';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { adjacentTxn } from './receivablesShared';
@@ -53,6 +54,7 @@ export function BillPayment({ winId, props }: WinProps) {
     setLoading(true);
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return;
       if (t.type !== 'BILLPMT') throw new Error('That transaction is not a bill payment.');
       const list = await api.get<UnpaidBill[]>(`/api/bills/unpaid?vendor_id=${t.name_id}&payment_id=${id}&pay_date=${t.date}`);
       const accts = new Map(t.links_out.filter((l) => l.kind === 'apply').map((l) => [l.txn_id, l.discount_account_id]));

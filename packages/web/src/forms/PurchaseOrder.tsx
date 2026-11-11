@@ -6,6 +6,7 @@ import { DateField } from '../controls/DateField';
 import { itemMap, LineGrid, linesForCompare, linesTotal, padLines, type GridLine, type LineGridHandle } from '../controls/LineGrid';
 import { nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { companyShipTo, gridFromItemLines, isPurchasable, itemLinesToInput, nameOptions, purchLabel, vendorAddress } from './purchaseShared';
@@ -99,6 +100,7 @@ export function PurchaseOrder({ winId, props }: WinProps) {
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'PURCHORD') {
         setError('That transaction is not a purchase order.');
         return false;

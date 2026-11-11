@@ -48,6 +48,13 @@ function HatchDefs({ prefix }: { prefix: string }) {
   );
 }
 
+/** Alt+D (the underlined letter of "Dates"): to the Dates box. No menu uses D. */
+function datesKey(e: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null) {
+  if (e.defaultPrevented || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.code !== 'KeyD') return;
+  e.preventDefault();
+  root?.querySelector<HTMLElement>('[data-dates]')?.focus();
+}
+
 /** Dates bar shared by both graphs. */
 function DatesBar({ q, setQ, children }: { q: GraphQuery; setQ: (q: GraphQuery) => void; children?: ReactNode }) {
   const today = todayIso();
@@ -181,6 +188,8 @@ export function SalesGraphWindow({ winId }: WinProps) {
   const [q, setQ] = useState<GraphQuery>({ date: 'this_fiscal_year_to_date', from: '', to: '' });
   const [by, setBy] = useState<'customer' | 'item'>('customer');
   const [top, setTop] = useState(10);
+  // What is in the Top box while it is being typed (it may be empty for a moment).
+  const [topText, setTopText] = useState('10');
   const [ids, setIds] = useState<{ customer: number[]; item: number[] }>({ customer: [], item: [] });
   const [picking, setPicking] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -221,7 +230,7 @@ export function SalesGraphWindow({ winId }: WinProps) {
   useWindowCommands(winId, { print });
 
   return (
-    <div className="rpt-window rpt-resizable" ref={rootRef}>
+    <div className="rpt-window rpt-resizable" ref={rootRef} onKeyDown={(e) => datesKey(e, rootRef.current)}>
       <div className="rpt-bar no-print">
         <div className="rpt-buttons">
           <button type="button" className="btn" onClick={print} title="Ctrl+P">
@@ -238,18 +247,23 @@ export function SalesGraphWindow({ winId }: WinProps) {
             <input type="radio" name={`${winId}-by`} checked={by === 'item'} onChange={() => setBy('item')} />
             By Item
           </label>
-          <label className="check">
+          <label className="graph-top" title="How many customers or items get their own colour (1 to 50); the rest are grouped as Other.">
             Top
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className="field small-num"
-              min={1}
-              max={50}
-              value={top}
+              value={topText}
+              maxLength={2}
+              aria-label="Top (how many shown separately)"
               onChange={(e) => {
-                const n = Math.round(Number(e.target.value));
-                if (n >= 1 && n <= 50) setTop(n);
+                const t = e.target.value.replace(/\D/g, '');
+                setTopText(t);
+                const n = Number(t);
+                if (t !== '' && n >= 1 && n <= 50) setTop(n);
               }}
+              onFocus={(e) => e.target.select()}
+              onBlur={() => setTopText(String(top))}
             />
           </label>
         </div>
@@ -359,7 +373,7 @@ export function IncomeExpenseGraphWindow({ winId }: WinProps) {
   useWindowCommands(winId, { print });
 
   return (
-    <div className="rpt-window rpt-resizable" ref={rootRef}>
+    <div className="rpt-window rpt-resizable" ref={rootRef} onKeyDown={(e) => datesKey(e, rootRef.current)}>
       <div className="rpt-bar no-print">
         <div className="rpt-buttons">
           <button type="button" className="btn" onClick={print} title="Ctrl+P">

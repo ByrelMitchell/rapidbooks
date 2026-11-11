@@ -6,6 +6,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { ListView, type Column } from '../controls/ListView';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { openTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, refocus, useLiveState } from '../util';
 import type { DiscountResult } from './ReceivePayments';
@@ -170,10 +171,7 @@ export function PaymentHistory({ winId, props }: WinProps) {
   }, [rows, selected]);
 
   const openRow = (r: HistRow) => {
-    const t = r.link.type;
-    if (t === 'INVOICE') desk.open('invoice', { id: r.link.txn_id });
-    else if (t === 'DEPOSIT') desk.open('deposit', { id: r.link.txn_id });
-    else if (t === 'CREDITMEMO') desk.open('creditmemo', { id: r.link.txn_id });
+    void openTxn(desk, r.link.type, r.link.txn_id);
   };
   const current = rows.find((r) => r.key === selected) ?? null;
   useWindowCommands(winId, { edit: () => current && openRow(current) });

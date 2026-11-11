@@ -32,7 +32,7 @@ import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
-import { openWindow } from './openTxn';
+import { handOffLocked, openWindow } from './openTxn';
 import { docLabel, openPdf } from './salesDoc';
 import './sales.css';
 
@@ -159,6 +159,7 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<DocTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== type) {
         setError(`That transaction is a ${t.type === 'INVOICE' ? 'invoice' : t.type.toLowerCase()}, not a ${text.noun}.`);
         return false;

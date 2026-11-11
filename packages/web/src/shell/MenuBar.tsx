@@ -5,6 +5,7 @@ import { sessionState, useSession } from '../admin/session';
 import { Mnemonic, parseMnemonic } from '../util';
 import { isModalOpen, toggleFullScreen, useDesktop, type CommandName, type Desktop } from './desktop';
 import { openRegister } from './shortcuts';
+import { setViewPref, useViewPrefs, type ViewPrefs } from './viewPrefs';
 
 export interface MenuItem {
   label: string;
@@ -13,6 +14,8 @@ export interface MenuItem {
   action?: () => void;
   /** A submenu (one level): Right or Enter opens it, Left or Esc closes it. */
   items?: MenuEntry[];
+  /** An on/off choice (View > Icon Bar): shown with a check mark when on. */
+  checked?: boolean;
 }
 export type MenuEntry = MenuItem | 'sep';
 export interface Menu {
@@ -25,7 +28,7 @@ export interface MenuBarHandle {
   openByLetter: (letter: string) => boolean;
 }
 
-function buildMenus(desk: Desktop, reportsMenu: Menu): Menu[] {
+function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] {
   const cmds = desk.commands(desk.activeId);
   const cmd = (name: CommandName) => (cmds[name] ? () => desk.run(name) : undefined);
   return [
@@ -60,6 +63,9 @@ function buildMenus(desk: Desktop, reportsMenu: Menu): Menu[] {
         { label: '&Actual Size', action: desk.zoom !== 100 ? () => desk.setZoom(100) : undefined },
         'sep',
         { label: '&Full Screen', action: () => void toggleFullScreen(desk.setStatus) },
+        'sep',
+        { label: 'Icon &Bar', checked: prefs.iconBar, action: () => setViewPref('iconBar', !prefs.iconBar) },
+        { label: '&Large List Font', checked: prefs.largeLists, action: () => setViewPref('largeLists', !prefs.largeLists) },
       ],
     },
     {
@@ -79,6 +85,8 @@ function buildMenus(desk: Desktop, reportsMenu: Menu): Menu[] {
     {
       label: '&Company',
       items: [
+        { label: '&Navigator', action: () => desk.open('navigator') },
+        'sep',
         { label: 'Company &Information...', action: () => desk.open('company') },
         { label: 'Make General &Journal Entries...', action: () => desk.open('journal', { id: null }) },
       ],
@@ -150,7 +158,11 @@ function buildMenus(desk: Desktop, reportsMenu: Menu): Menu[] {
     },
     {
       label: '&Help',
-      items: [{ label: '&About RapidBooks...', shortcut: 'F2', action: () => desk.open('about') }],
+      items: [
+        { label: '&Keyboard Shortcuts', action: () => desk.open('keys') },
+        'sep',
+        { label: '&About RapidBooks...', shortcut: 'F2', action: () => desk.open('about') },
+      ],
     },
   ];
 }
@@ -174,7 +186,7 @@ const firstEnabled = (items: MenuEntry[]) => step(items, -1, 1);
 export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
   const desk = useDesktop();
   useSession(); // re-render when login state changes (File > Log Off)
-  const menus = buildMenus(desk, useReportsMenu(desk));
+  const menus = buildMenus(desk, useReportsMenu(desk), useViewPrefs());
   const [open, setOpen] = useState<number | null>(null);
   const [item, setItem] = useState(-1);
   // The open submenu belongs to the hot item `item`; subItem is the hot entry inside it.
@@ -327,8 +339,9 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
                 return (
                   <div
                     key={`${j}${x.label}`}
-                    role="menuitem"
+                    role={x.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
                     aria-disabled={!on}
+                    aria-checked={x.checked}
                     aria-haspopup={x.items ? 'menu' : undefined}
                     aria-expanded={x.items ? sub && item === j : undefined}
                     className={`menu-item${on ? '' : ' disabled'}${item === j ? ' hot' : ''}${x.items ? ' has-sub' : ''}`}
@@ -342,6 +355,11 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
                     }}
                     onClick={() => activate(x, j)}
                   >
+                    {x.checked && (
+                      <span className="menu-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
                     <span className="menu-label">
                       <Mnemonic label={x.label} />
                     </span>

@@ -17,7 +17,7 @@ import type { WinProps } from '../shell/registry';
 import { openTxn } from './openTxn';
 
 const heading = (t: DocTxn | undefined) =>
-  t ? `${TXN_TYPE_LABELS[t.type] ?? t.type}${t.num ? ` ${t.num}` : ''}, ${formatUsDate(t.date)}` : 'Loading...';
+  t ? `${t.qb_type || TXN_TYPE_LABELS[t.type] || t.type}${t.num ? ` ${t.num}` : ''}, ${formatUsDate(t.date)}` : 'Loading...';
 
 /**
  * Transaction History (Ctrl+H): what is linked to this transaction. For an invoice,
@@ -28,7 +28,11 @@ export function TxnHistory({ winId, props }: WinProps) {
   const txnId = props.txnId as number;
   const desk = useDesktop();
   const { data: t, error } = useData<DocTxn>(`/api/txns/${txnId}`);
-  const rows = useMemo(() => (t ? (t.type === 'INVOICE' ? t.links_in : [...t.links_out, ...t.links_in]) : []), [t]);
+  // A QuickBooks type with no RapidBooks form (imported as posted) has no links at all.
+  const rows = useMemo(
+    () => (t ? (t.type === 'INVOICE' ? (t.links_in ?? []) : [...(t.links_out ?? []), ...(t.links_in ?? [])]) : []),
+    [t],
+  );
   const [selected, setSelected] = useState<number | null>(null);
 
   useEffect(() => {

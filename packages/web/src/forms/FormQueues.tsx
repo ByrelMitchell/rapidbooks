@@ -163,6 +163,8 @@ export function SendForms({ winId }: WinProps) {
 /** Re-save a document with To be printed turned off. */
 async function clearToPrint(id: number) {
   const t = await api.get<DocTxn>(`/api/txns/${id}`);
+  // Imported as posted from QuickBooks: its form cannot re-save it (the server would refuse).
+  if (t.import_locked) return;
   await api.put(`/api/txns/${id}`, { ...docToInput(t), to_print: false });
 }
 

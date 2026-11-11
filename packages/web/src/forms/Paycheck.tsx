@@ -19,6 +19,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill, nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
 import { bankOptions, daysBetween, EndingBalance, firstBankId, nextCheckNum, payeeAddress, useCheckNumGuard } from './checkShared';
@@ -189,6 +190,7 @@ export function Paycheck({ winId, props }: WinProps) {
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'PAYCHECK') {
         setError('That transaction is not a paycheck.');
         return false;

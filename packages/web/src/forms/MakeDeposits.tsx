@@ -16,6 +16,7 @@ import { DateField } from '../controls/DateField';
 import { ListView, type Column } from '../controls/ListView';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { adjacentTxn, anyNameQuickFill, PayMethodField } from './receivablesShared';
@@ -135,6 +136,7 @@ export function MakeDeposits({ winId, props }: WinProps) {
     setLoading(true);
     try {
       const t = await api.get<DocTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return;
       if (t.type !== 'DEPOSIT') throw new Error('That transaction is not a deposit.');
       const pend = await api.get<PendingPayment[]>(`/api/deposits/pending?deposit_id=${id}`);
       const order = new Map(t.payment_ids.map((p, i) => [p, i]));

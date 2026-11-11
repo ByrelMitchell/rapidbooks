@@ -19,11 +19,17 @@ export function EmailDialog({ winId, props }: WinProps) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const busy = useRef(false);
+  // The draft as it arrived, to tell whether anything was typed.
+  const original = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api.get<EmailDraft>(`/api/email/defaults/${txnId}`).then(
-      (d) => !cancelled && setDraft(d),
+      (d) => {
+        if (cancelled) return;
+        original.current = JSON.stringify(d);
+        setDraft(d);
+      },
       (e) => !cancelled && setError(errorMessage(e)),
     );
     return () => {
@@ -57,7 +63,16 @@ export function EmailDialog({ winId, props }: WinProps) {
   };
 
   // Ctrl+Enter and Alt+S send.
-  useWindowCommands(winId, { save: () => void send(), saveClose: () => void send() });
+  // Esc or the close box with a changed message asks first, so a typed note is not lost.
+  const confirmClose = async () => {
+    const field = commitActiveField({ quiet: true });
+    const d = draftRef.current;
+    if (busy.current || !d || original.current === null || JSON.stringify(d) === original.current) return !busy.current;
+    if (await desk.confirm('This e-mail has not been sent. Do you want to discard it?', { defaultNo: true })) return true;
+    refocus(field);
+    return false;
+  };
+  useWindowCommands(winId, { save: () => void send(), saveClose: () => void send(), confirmClose });
 
   const notConfigured = status && !status.configured;
   return (

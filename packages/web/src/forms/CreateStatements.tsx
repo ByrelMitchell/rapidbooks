@@ -15,6 +15,7 @@ import { DateField } from '../controls/DateField';
 import { ListView, type Column } from '../controls/ListView';
 import { nameQuickFill } from '../lists/quickAdd';
 import { useDesktop } from '../shell/desktop';
+import { openTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField } from '../util';
 import './receivables.css';
@@ -294,9 +295,8 @@ export function StatementPreview({ winId, props }: WinProps) {
 
   const openRow = (r: StatementRow) => {
     if (r.txn_id === null) return;
-    const kind = r.type === 'INVOICE' ? 'invoice' : r.type === 'PAYMENT' ? 'payment' : r.type === 'CREDITMEMO' ? 'creditmemo' : null;
-    if (kind) desk.open(kind, { id: r.txn_id });
-    else if (r.type === 'GENJRNL') desk.open('journal', { id: r.txn_id });
+    // Any type, including QuickBooks' own imported ones ("Statement Charge"): openTxn finds its window.
+    void openTxn(desk, r.type, r.txn_id);
   };
 
   const columns: Column<StatementRow & { idx: number }>[] = [

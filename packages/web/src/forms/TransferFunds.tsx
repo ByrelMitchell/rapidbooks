@@ -6,6 +6,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { EndingBalance, firstBankId } from './checkShared';
@@ -71,6 +72,7 @@ export function TransferFunds({ winId, props }: WinProps) {
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'TRANSFER') {
         setError('That transaction is not a transfer.');
         return false;

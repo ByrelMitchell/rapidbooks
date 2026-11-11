@@ -221,6 +221,8 @@ textarea {
   padding: 0.1875rem;
   min-width: 16rem;
   max-width: calc(100% - 0.5rem);
+  /* Never taller than the desktop: WindowFrame moves a new window up to fit, and its body scrolls. */
+  max-height: calc(100% - 0.5rem);
 }
 
 .win-title {
@@ -273,6 +275,7 @@ textarea {
   display: flex;
   flex-direction: column;
   padding: 0.5rem;
+  overflow: auto;
 }
 
 /* ---------- Controls ---------- */

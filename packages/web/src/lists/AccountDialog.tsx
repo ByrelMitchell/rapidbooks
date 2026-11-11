@@ -116,7 +116,21 @@ export function AccountDialog({ winId, props }: WinProps) {
     }
   };
 
-  useWindowCommands(winId, { save: () => void submit() });
+  // The form as loaded (captured once it is filled in), to tell whether anything was changed.
+  const snapshot = useRef<string | null>(null);
+  useEffect(() => {
+    if (loaded.current && snapshot.current === null) snapshot.current = JSON.stringify(formRef.current);
+  });
+  const confirmClose = async () => {
+    const field = commitActiveField({ quiet: true });
+    if (saving || snapshot.current === null || JSON.stringify(formRef.current) === snapshot.current) return true;
+    if (await desk.confirm('You have changed this account. Do you want to discard your changes?', { defaultNo: true }))
+      return true;
+    refocus(field);
+    return false;
+  };
+
+  useWindowCommands(winId, { save: () => void submit(), confirmClose });
 
   return (
     <form

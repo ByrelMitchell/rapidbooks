@@ -15,6 +15,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { autoApply, payable, toggleRow, totalApplied, type ApplyRow } from './paymentApply';
@@ -160,6 +161,7 @@ export function ReceivePayments({ winId, props }: WinProps) {
     rowsSeq.current++;
     try {
       const t = await api.get<DocTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return;
       if (t.type !== 'PAYMENT') throw new Error('That transaction is not a payment.');
       const list = await api.get<OpenInvoice[]>(`/api/customers/${t.name_id}/open-invoices?payment_id=${id}`);
       const accts = new Map(t.links_out.filter((l) => l.kind === 'apply').map((l) => [l.txn_id, l.discount_account_id]));

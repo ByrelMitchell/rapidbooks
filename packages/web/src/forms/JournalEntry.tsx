@@ -6,6 +6,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 
@@ -96,6 +97,13 @@ export function JournalEntry({ winId, props }: WinProps) {
     api.get<Txn>(`/api/txns/${propId}`).then(
       (t) => {
         if (cancelled) return;
+        // Imported as posted from QuickBooks: shown (and saved) in the imported view instead.
+        if (handOffLocked(desk, winId, t)) return;
+        if (t.type !== 'GENJRNL') {
+          setError('That transaction is not a general journal entry.');
+          setLoading(false);
+          return;
+        }
         const lines = t.splits.map(
           (s): Line => ({
             key: ++lineSeq,

@@ -29,6 +29,7 @@ import {
 } from '../controls/LineGrid';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
+import { handOffLocked } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
@@ -208,6 +209,7 @@ export function WriteChecks({ winId, props }: WinProps) {
   const load = async (id: number): Promise<boolean> => {
     try {
       const t = await api.get<PurchTxn>(`/api/txns/${id}`);
+      if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'CHECK') {
         setError('That transaction is not a check.');
         return false;

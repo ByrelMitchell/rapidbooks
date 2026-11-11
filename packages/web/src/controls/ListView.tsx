@@ -19,7 +19,15 @@ interface Props<T, K extends string | number> {
   rowClass?: (row: T) => string;
   emptyText?: string;
   label?: string;
+  /** Extra class on the table (e.g. a minimum width so a column keeps its room). */
+  tableClass?: string;
 }
+
+/**
+ * Column widths given in rem are applied in em, which is the same at the normal list font
+ * (.listview is 1rem) and grows with View > Large List Font, so the larger text still fits.
+ */
+const scaled = (w: string) => w.replace(/(\d*\.?\d+)rem\b/g, '$1em');
 
 /** Keyboard-navigable list (Up/Down/Home/End/PageUp/PageDown, Enter or double-click to open). */
 export function ListView<T, K extends string | number>({
@@ -32,6 +40,7 @@ export function ListView<T, K extends string | number>({
   rowClass,
   emptyText,
   label,
+  tableClass,
 }: Props<T, K>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const index = selected === null ? -1 : rows.findIndex((r) => rowKey(r) === selected);
@@ -87,10 +96,10 @@ export function ListView<T, K extends string | number>({
 
   return (
     <div className="listview" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} role="grid" aria-label={label}>
-      <table>
+      <table className={tableClass}>
         <colgroup>
           {columns.map((c) => (
-            <col key={c.key} style={c.width ? { width: c.width } : undefined} />
+            <col key={c.key} style={c.width ? { width: scaled(c.width) } : undefined} />
           ))}
         </colgroup>
         <thead>
