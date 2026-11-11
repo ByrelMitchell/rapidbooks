@@ -154,6 +154,7 @@ On each desktop:
 ```
 client$ sudo install -m 0755 rapidbooks-launch.sh /usr/local/bin/rapidbooks-launch
 client$ sudo install -m 0644 rapidbooks.desktop /usr/share/applications/rapidbooks.desktop
+client$ sudo install -D -m 0644 rapidbooks.png /usr/share/icons/hicolor/256x256/apps/rapidbooks.png
 ```
 
 (both from the `deploy/` folder). Put the server address in `/etc/rapidbooks-client.conf`:

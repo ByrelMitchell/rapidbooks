@@ -7,7 +7,7 @@ Comment=Open RapidBooks (full screen)
 # rapidbooks-launch opens Chromium in app mode, full screen, at the server address
 # set inside it (or in /etc/rapidbooks-client.conf). See docs/DEPLOY.md, "Client computers".
 Exec=/usr/local/bin/rapidbooks-launch
-Icon=accessories-calculator
+Icon=rapidbooks
 Terminal=false
 Categories=Office;Finance;
 StartupWMClass=RapidBooks
