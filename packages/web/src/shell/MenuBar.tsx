@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Mnemonic, parseMnemonic } from '../util';
-import { toggleFullScreen, useDesktop, type CommandName, type Desktop } from './desktop';
+import { isModalOpen, toggleFullScreen, useDesktop, type CommandName, type Desktop } from './desktop';
 import { openRegister } from './shortcuts';
 
 export interface MenuItem {
@@ -49,11 +49,13 @@ function buildMenus(desk: Desktop): Menu[] {
       label: '&Lists',
       items: [
         { label: 'Chart of &Accounts', shortcut: 'Ctrl+A', action: () => desk.open('accounts') },
-        { label: '&Item List' },
-        { label: '&Customer:Job List', shortcut: 'Ctrl+J' },
-        { label: '&Vendor List' },
-        { label: '&Employee List' },
-        { label: '&Other Names List' },
+        { label: '&Item List', action: () => desk.open('items') },
+        { label: '&Customer:Job List', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
+        { label: '&Vendor List', action: () => desk.open('vendors') },
+        { label: '&Employee List', action: () => desk.open('employees') },
+        { label: '&Other Names List', action: () => desk.open('othernames') },
+        'sep',
+        { label: '&Terms List', action: () => desk.open('terms') },
       ],
     },
     {
@@ -66,6 +68,8 @@ function buildMenus(desk: Desktop): Menu[] {
     {
       label: 'C&ustomers',
       items: [
+        { label: 'Customer:&Job List', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
+        'sep',
         { label: 'Create &Invoices', shortcut: 'Ctrl+I' },
         { label: 'Create Credit &Memos/Refunds' },
         { label: 'Create &Statements...' },
@@ -75,9 +79,18 @@ function buildMenus(desk: Desktop): Menu[] {
     },
     {
       label: 'Vend&ors',
-      items: [{ label: 'Create &Purchase Orders' }, { label: '&Enter Bills' }, { label: 'Pay &Bills' }],
+      items: [
+        { label: '&Vendor List', action: () => desk.open('vendors') },
+        'sep',
+        { label: 'Create &Purchase Orders' },
+        { label: '&Enter Bills' },
+        { label: 'Pay &Bills' },
+      ],
     },
-    { label: 'Emplo&yees', items: [{ label: '&Pay Employees' }] },
+    {
+      label: 'Emplo&yees',
+      items: [{ label: '&Employee List', action: () => desk.open('employees') }, 'sep', { label: '&Pay Employees' }],
+    },
     {
       label: '&Banking',
       items: [
@@ -109,11 +122,11 @@ function buildMenus(desk: Desktop): Menu[] {
         {
           label: 'Close &All',
           action: desk.windows.length
-            ? () => {
+            ? async () => {
                 // Front-most first, so any "discard changes?" prompt is for the window in view.
                 for (const w of [...desk.windows].sort((a, b) => b.z - a.z)) {
                   desk.focus(w.id);
-                  if (!desk.requestClose(w.id)) break;
+                  if (!(await desk.requestClose(w.id))) break;
                 }
               }
             : undefined,
@@ -173,6 +186,11 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
     if (open === null) return;
     const items = menus[open].items;
     const onKey = (e: KeyboardEvent) => {
+      // A message box that opens while a menu is down takes the keyboard; the menu just closes.
+      if (isModalOpen()) {
+        closeMenu();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       if (e.key === 'Escape') closeMenu();

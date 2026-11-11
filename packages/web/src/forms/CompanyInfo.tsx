@@ -54,10 +54,11 @@ export function CompanyInfo({ winId }: WinProps) {
 
   useWindowCommands(winId, {
     save: () => void submit(),
-    confirmClose: () => {
-      const field = commitActiveField();
+    confirmClose: async () => {
+      const field = commitActiveField({ quiet: true });
       if (loading || JSON.stringify(infoRef.current) === saved.current) return true;
-      if (window.confirm('The company information has changes that have not been saved. Do you want to discard changes?')) return true;
+      if (await desk.confirm('The company information has changes that have not been saved. Do you want to discard changes?'))
+        return true;
       refocus(field);
       return false;
     },

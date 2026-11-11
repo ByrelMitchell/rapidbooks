@@ -7,7 +7,8 @@ import {
   type InputHTMLAttributes,
   type KeyboardEvent,
 } from 'react';
-import { useLiveState } from '../util';
+import { isModalOpen } from '../shell/desktop';
+import { isQuietBlur, useLiveState } from '../util';
 
 export interface ComboOption {
   id: number;
@@ -18,7 +19,31 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> &
   options: ComboOption[];
   value: number | null;
   onChange: (id: number | null) => void;
+  /** The list this field picks from, as QuickBooks names it ("Customer:Job", "Item"...). Ctrl+L opens it. */
+  listName?: string;
+  /**
+   * Called when the field is left holding text that is not on the list (the Quick Add / Set Up box).
+   * Resolve to the id to select, or null to leave the field invalid with focus back in it.
+   */
+  onNotFound?: (text: string) => Promise<number | null>;
 };
+
+// Not-found boxes still being answered (each leaves the set once answered), so a save can wait for them.
+const pending = new Set<Promise<boolean>>();
+
+/**
+ * Wait until every Quick Add / Set Up started by leaving a Combo is answered.
+ * Resolves false if any was cancelled: the save should stop (focus is already back in that field).
+ * Call it right after commitActiveField() in a save handler, before reading the form.
+ */
+export async function settleQuickFill(): Promise<boolean> {
+  let ok = true;
+  while (pending.size > 0) {
+    const results = await Promise.all([...pending]);
+    if (results.includes(false)) ok = false;
+  }
+  return ok;
+}
 
 const lastSeg = (label: string) => label.slice(label.lastIndexOf(':') + 1);
 
@@ -42,7 +67,18 @@ function resolve(options: ComboOption[], text: string): ComboOption | null {
 }
 
 /** QuickBooks "QuickFill" combo: type-ahead completion plus an Alt+Down dropdown list. */
-export function Combo({ options, value, onChange, className, onKeyDown, onFocus, onBlur, ...rest }: Props) {
+export function Combo({
+  options,
+  value,
+  onChange,
+  listName,
+  onNotFound,
+  className,
+  onKeyDown,
+  onFocus,
+  onBlur,
+  ...rest
+}: Props) {
   const valueLabel = options.find((o) => o.id === value)?.label ?? '';
   // The ref copy lets blur (which may follow a pick in the same keystroke) see the latest text.
   const [text, setText, textRef] = useLiveState(valueLabel);
@@ -57,11 +93,16 @@ export function Combo({ options, value, onChange, className, onKeyDown, onFocus,
   const invalidRef = useRef(false);
   invalidRef.current = invalid;
   const pendingSel = useRef<[number, number] | null>(null);
+  // A not-found box for this field is up (or its Set Up window is open): don't ask again.
+  const asking = useRef(false);
+  // The id Quick Add / Set Up just created; until the list reloads it has no label yet.
+  const added = useRef<number | null>(null);
 
   // Follow the value when it changes from outside (or when the options finish loading).
   useEffect(() => {
     if (focused.current) return;
     if (value === null && invalidRef.current) return; // keep showing what was typed wrong
+    if (value !== null && value === added.current && !options.some((o) => o.id === value)) return;
     setText(valueLabel);
     setInvalid(false);
   }, [value, valueLabel]);
@@ -100,7 +141,43 @@ export function Combo({ options, value, onChange, className, onKeyDown, onFocus,
     if (o.id !== value) onChange(o.id);
   };
 
-  const commit = () => {
+  /** The box (via onNotFound) for text that is not on the list. */
+  const askNotFound = (
+    typed: string,
+    handler: (text: string) => Promise<number | null>,
+    // Where focus was going when the field was left (Tab to the next field), if anywhere.
+    next: HTMLElement | null,
+  ) => {
+    asking.current = true;
+    const p = (async () => {
+      let id: number | null = null;
+      try {
+        id = await handler(typed);
+      } catch {
+        id = null;
+      }
+      asking.current = false;
+      if (id !== null) {
+        added.current = id;
+        setInvalid(false);
+        onChange(id);
+        // The box may have opened before focus reached the next field; carry on there.
+        const now = document.activeElement;
+        if ((!now || now === document.body) && next?.isConnected) next.focus();
+        return true;
+      }
+      const el = inputRef.current;
+      if (el && el.isConnected) {
+        el.focus();
+        el.select();
+      }
+      return false;
+    })();
+    pending.add(p);
+    void p.finally(() => pending.delete(p));
+  };
+
+  const commit = (mayAsk: boolean, next: HTMLElement | null = null) => {
     setOpen(false);
     const text = textRef.current;
     if (!text.trim()) {
@@ -117,6 +194,7 @@ export function Combo({ options, value, onChange, className, onKeyDown, onFocus,
     } else {
       setInvalid(true);
       if (value !== null) onChange(null);
+      if (mayAsk && onNotFound && !asking.current) askNotFound(text.trim(), onNotFound, next);
     }
   };
 
@@ -207,9 +285,12 @@ export function Combo({ options, value, onChange, className, onKeyDown, onFocus,
           e.target.select();
           onFocus?.(e);
         }}
+        data-list={listName}
         onBlur={(e) => {
           focused.current = false;
-          commit();
+          // No box when focus left because a message box opened, or a window is closing.
+          const to = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
+          commit(!isQuietBlur() && !isModalOpen() && !to?.closest('.msgbox'), to);
           onBlur?.(e);
         }}
       />

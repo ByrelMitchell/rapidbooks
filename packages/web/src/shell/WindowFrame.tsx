@@ -114,7 +114,7 @@ export function WindowFrame({
           tabIndex={-1}
           title="Close (Esc)"
           aria-label="Close"
-          onClick={() => desk.requestClose(win.id)}
+          onClick={() => void desk.requestClose(win.id)}
         >
           ×
         </button>

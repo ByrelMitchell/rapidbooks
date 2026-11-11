@@ -632,3 +632,236 @@ textarea.field {
     max-width: 100%;
   }
 }
+
+/* ---------- Message boxes ---------- */
+
+.modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.win.msgbox {
+  position: relative;
+  min-width: 22rem;
+  max-width: min(36rem, 100%);
+}
+
+.msgbox-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1rem 0.5rem;
+}
+
+.msgbox-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 1.25rem;
+  font-family: 'Times New Roman', serif;
+  color: #ffffff;
+  border: var(--px) solid var(--dark);
+}
+
+.msgbox-icon.info,
+.msgbox-icon.question {
+  background: #0040c0;
+}
+
+.msgbox-icon.warning {
+  background: #ffd800;
+  color: #000000;
+}
+
+.msgbox-icon.error {
+  background: #c00000;
+}
+
+.msgbox-text {
+  padding-top: 0.375rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msgbox .button-row {
+  padding: 0.75rem 0.5rem 0.5rem;
+}
+
+.button-row.center {
+  justify-content: center;
+}
+
+/* ---------- List windows ---------- */
+
+.listview tr.inactive td {
+  color: var(--grey-text);
+}
+
+.listview tr.sel.inactive td {
+  color: #c0c0e0;
+}
+
+/* ---------- List edit dialogs (New Customer style) ---------- */
+
+.rec-body {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.rec-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rec-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 8rem;
+}
+
+.rec-side .btn {
+  min-width: 0;
+  width: 100%;
+}
+
+.rec-inactive {
+  padding-top: 1rem;
+}
+
+.rec-inactive .check {
+  align-items: flex-start;
+}
+
+.rec-loading {
+  padding: 1rem;
+  color: var(--grey-text);
+}
+
+.groupbox {
+  margin: 0;
+  padding: 0.375rem 0.625rem 0.625rem;
+  border: var(--px) solid var(--shadow);
+  box-shadow: var(--px) var(--px) var(--hilite), inset var(--px) var(--px) var(--hilite);
+  min-width: 0;
+}
+
+.groupbox > legend {
+  padding: 0 0.25rem;
+}
+
+.cols2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  align-items: start;
+}
+
+.groupbox.cols2 > legend {
+  grid-column: 1 / -1;
+}
+
+.inline-fields {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.mi-field {
+  width: 2.5rem;
+  flex: none;
+}
+
+.short-field {
+  width: 6rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.addr-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.addr-row > legend {
+  grid-column: 1 / -1;
+}
+
+.copy-btn {
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+}
+
+.picks-up {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.375rem;
+  border: var(--px) dotted var(--shadow);
+  font-weight: bold;
+}
+
+.rate-field {
+  width: 10rem;
+}
+
+.group-grid {
+  max-height: 12rem;
+}
+
+.small-num {
+  width: 4.5rem;
+  text-align: right;
+}
+
+.terms-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.terms-line {
+  display: grid;
+  grid-template-columns: 12rem 4.5rem auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.terms-line > label {
+  text-align: right;
+}
+
+@media (max-width: 40rem) {
+  .cols2,
+  .addr-row,
+  .rec-body {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .rec-side {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}

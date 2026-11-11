@@ -45,7 +45,8 @@ export function ChartOfAccounts({ winId }: WinProps) {
     edit: () => current && desk.open('account', { id: current.id }),
     delete: async () => {
       if (!current) return;
-      if (!window.confirm(`Delete the account "${current.full_name}"?`)) return;
+      if (!(await desk.confirm(`Delete the account "${current.full_name}"?`, { yes: '&Delete', no: '&Cancel' })))
+        return;
       try {
         await api.del(`/api/accounts/${current.id}`);
         const i = accounts.indexOf(current);
@@ -54,7 +55,7 @@ export function ChartOfAccounts({ winId }: WinProps) {
         desk.setStatus(`Account "${current.full_name}" deleted.`);
         desk.refresh();
       } catch (e) {
-        window.alert(errorMessage(e));
+        await desk.alert(errorMessage(e));
       }
     },
     register: () => openRegister(current),

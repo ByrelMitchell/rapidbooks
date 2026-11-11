@@ -2,8 +2,9 @@ import { formatMoney, todayIso, type Account, type Txn, type TxnInput } from '@r
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { api, errorMessage, useData } from '../api';
 import { AmountField } from '../controls/AmountField';
-import { Combo } from '../controls/Combo';
+import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
+import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
@@ -195,6 +196,11 @@ export function JournalEntry({ winId, props }: WinProps) {
   const save = async (mode: 'stay' | 'close' | 'new') => {
     if (saving.current || loading) return;
     const field = commitActiveField();
+    // An account typed that is not on the list: wait for its Set Up (or stop if it was cancelled).
+    saving.current = true;
+    const settled = await settleQuickFill();
+    saving.current = false;
+    if (!settled) return;
     const f = formRef.current;
     const id = txnIdRef.current;
 
@@ -268,7 +274,7 @@ export function JournalEntry({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null) return;
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
     try {
       await api.del(`/api/txns/${id}`);
       desk.setStatus('General journal entry deleted.');
@@ -279,10 +285,11 @@ export function JournalEntry({ winId, props }: WinProps) {
     }
   };
 
-  const confirmClose = () => {
-    const field = commitActiveField();
+  const confirmClose = async () => {
+    const field = commitActiveField({ quiet: true });
     if (!isDirty()) return true;
-    if (window.confirm('This journal entry has changes that have not been saved. Do you want to discard changes?')) return true;
+    if (await desk.confirm('This journal entry has changes that have not been saved. Do you want to discard changes?'))
+      return true;
     refocus(field);
     return false;
   };
@@ -298,8 +305,11 @@ export function JournalEntry({ winId, props }: WinProps) {
         desk.open('journal', { id: null });
         return;
       }
-      if (!confirmClose()) return;
-      void startNew().then(() => dateRef.current?.focus());
+      void confirmClose().then(async (ok) => {
+        if (!ok) return;
+        await startNew();
+        dateRef.current?.focus();
+      });
     },
     delete: txnId !== null ? () => void remove() : undefined,
     confirmClose,
@@ -378,6 +388,7 @@ export function JournalEntry({ winId, props }: WinProps) {
                     data-col="account"
                     aria-label={`Account, line ${i + 1}`}
                     disabled={loading}
+                    {...accountQuickFill(desk)}
                   />
                 </td>
                 <td>

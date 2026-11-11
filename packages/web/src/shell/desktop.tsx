@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveState } from '../util';
+import { MessageBox, type MsgBoxOptions, type MsgBoxRequest, type MsgIcon } from './MessageBox';
 import type { Registry } from './registry';
 
 export interface WinState {
@@ -23,8 +24,8 @@ export interface Commands {
   insertLine?: () => void;
   deleteLine?: () => void;
   register?: () => void;
-  /** Return false to keep the window open. */
-  confirmClose?: () => boolean;
+  /** Return (or resolve to) false to keep the window open. */
+  confirmClose?: () => boolean | Promise<boolean>;
 }
 export type CommandName = Exclude<keyof Commands, 'confirmClose'>;
 
@@ -40,12 +41,37 @@ function loadZoom(): number {
   }
 }
 
+// How many message boxes are up or queued. Module-level so code outside React (the
+// shortcut listener, the menu bar, Combo's blur) can ask synchronously.
+let modalCount = 0;
+/** True while an in-app message box is showing: shortcuts, menus and Quick Add must not act. */
+export const isModalOpen = () => modalCount > 0;
+
+export interface ConfirmOptions {
+  /** Label of the button that answers true (default "&Yes"). */
+  yes?: string;
+  /** Label of the button that answers false (default "&No"); Esc chooses it. */
+  no?: string;
+  title?: string;
+  icon?: MsgIcon;
+  /** Start with focus on the "no" button. */
+  defaultNo?: boolean;
+}
+
 export interface Desktop {
   windows: WinState[];
   activeId: string | null;
   open: (kind: string, props?: Record<string, unknown>) => string;
+  /**
+   * Open a new window (never an existing one) and wait for its result: what the window
+   * passes to resolveWindow, or null if it closes without one.
+   */
+  openForResult: <T = number>(kind: string, props?: Record<string, unknown>) => Promise<T | null>;
+  /** A window opened with openForResult reports its result (e.g. the id it saved). Later calls are ignored. */
+  resolveWindow: (id: string, result: unknown) => void;
   close: (id: string) => void;
-  requestClose: (id: string) => boolean;
+  /** Close unless the window's confirmClose refuses. Resolves to whether it closed. */
+  requestClose: (id: string) => Promise<boolean>;
   focus: (id: string) => void;
   setTitle: (id: string, title: string) => void;
   move: (id: string, x: number, y: number) => void;
@@ -60,6 +86,14 @@ export interface Desktop {
   commands: (id: string | null) => Commands;
   registerCommands: (id: string, cmds: Commands | null) => void;
   run: (name: CommandName) => boolean;
+  /** Show a message box; resolves to the index of the button chosen. */
+  messageBox: (message: string, opts: MsgBoxOptions) => Promise<number>;
+  /** Yes/No box (labels configurable); resolves true for "yes". */
+  confirm: (message: string, opts?: ConfirmOptions) => Promise<boolean>;
+  /** OK box. */
+  alert: (message: string, opts?: { title?: string; icon?: MsgIcon }) => Promise<void>;
+  /** True while a message box is showing (also isModalOpen() outside React). */
+  modalOpen: boolean;
 }
 
 const Ctx = createContext<Desktop | null>(null);
@@ -81,6 +115,11 @@ export function DesktopProvider({ registry, children }: { registry: Registry; ch
   const zTop = useRef(0);
   const cascade = useRef(0);
   const cmdMap = useRef(new Map<string, Commands>());
+  const waiters = useRef(new Map<string, (result: unknown) => void>());
+  const closing = useRef(new Set<string>());
+  const reqSeq = useRef(0);
+  const [modals, setModals] = useState<(MsgBoxRequest & { resolve: (i: number) => void })[]>([]);
+  const modalSeq = useRef(0);
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${zoom}%`;
@@ -133,23 +172,83 @@ export function DesktopProvider({ registry, children }: { registry: Registry; ch
     [focus, registry, setWindows, winsRef],
   );
 
+  const resolveWindow = useCallback((id: string, result: unknown) => {
+    const w = waiters.current.get(id);
+    if (!w) return;
+    waiters.current.delete(id);
+    w(result);
+  }, []);
+
+  const openForResult = useCallback(
+    <T,>(kind: string, props: Record<string, unknown> = {}) =>
+      new Promise<T | null>((resolve) => {
+        // The request number keeps it from being mistaken for a window that is already open.
+        const id = open(kind, { ...props, request: ++reqSeq.current });
+        waiters.current.set(id, resolve as (r: unknown) => void);
+      }),
+    [open],
+  );
+
   const close = useCallback(
     (id: string) => {
       cmdMap.current.delete(id);
       setWindows((prev) => prev.filter((w) => w.id !== id));
       if (winsRef.current.length === 0) cascade.current = 0;
+      resolveWindow(id, null);
     },
-    [setWindows, winsRef],
+    [setWindows, winsRef, resolveWindow],
   );
 
   const requestClose = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      if (closing.current.has(id)) return false; // already asking
       const c = cmdMap.current.get(id);
-      if (c?.confirmClose && c.confirmClose() === false) return false;
+      if (c?.confirmClose) {
+        closing.current.add(id);
+        try {
+          if ((await c.confirmClose()) === false) return false;
+        } finally {
+          closing.current.delete(id);
+        }
+      }
+      if (!winsRef.current.some((w) => w.id === id)) return true;
       close(id);
       return true;
     },
-    [close],
+    [close, winsRef],
+  );
+
+  const messageBox = useCallback(
+    (message: string, opts: MsgBoxOptions) =>
+      new Promise<number>((resolve) => {
+        modalCount++;
+        setModals((prev) => [...prev, { ...opts, message, key: ++modalSeq.current, resolve }]);
+      }),
+    [],
+  );
+  const finishModal = (key: number, index: number) => {
+    const m = modals.find((x) => x.key === key);
+    if (!m) return;
+    modalCount--;
+    setModals((prev) => prev.filter((x) => x.key !== key));
+    m.resolve(index);
+  };
+  const confirm = useCallback(
+    async (message: string, opts: ConfirmOptions = {}) =>
+      (await messageBox(message, {
+        title: opts.title,
+        icon: opts.icon ?? 'question',
+        buttons: [opts.yes ?? '&Yes', opts.no ?? '&No'],
+        defaultButton: opts.defaultNo ? 1 : 0,
+        cancelButton: 1,
+      })) === 0,
+    [messageBox],
+  );
+  const alert = useCallback(
+    async (message: string, opts: { title?: string; icon?: MsgIcon } = {}) => {
+      await messageBox(message, { title: opts.title, icon: opts.icon ?? 'warning', buttons: ['OK'] });
+    },
+    [messageBox],
   );
 
   const setTitle = useCallback(
@@ -195,6 +294,8 @@ export function DesktopProvider({ registry, children }: { registry: Registry; ch
     windows,
     activeId,
     open,
+    openForResult,
+    resolveWindow,
     close,
     requestClose,
     focus,
@@ -211,8 +312,18 @@ export function DesktopProvider({ registry, children }: { registry: Registry; ch
     commands,
     registerCommands,
     run,
+    messageBox,
+    confirm,
+    alert,
+    modalOpen: modals.length > 0,
   };
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const top = modals[0];
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {top && <MessageBox key={top.key} req={top} onDone={(i) => finishModal(top.key, i)} />}
+    </Ctx.Provider>
+  );
 }
 
 /** Register this window's command handlers (re-registered every render so they never go stale). */

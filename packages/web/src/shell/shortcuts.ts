@@ -1,8 +1,9 @@
 import type { Account } from '@rapidbooks/shared';
 import { useEffect, useRef, type RefObject } from 'react';
 import { api, errorMessage } from '../api';
+import { LIST_WINDOWS } from '../lists/quickAdd';
 import { focusables } from '../util';
-import type { CommandName, Desktop } from './desktop';
+import { isModalOpen, type CommandName, type Desktop } from './desktop';
 import type { MenuBarHandle } from './MenuBar';
 
 /** Banking > Use Register (Ctrl+R) when the active window has no register of its own: the first bank account. */
@@ -25,12 +26,10 @@ export async function openRegister(desk: Desktop) {
 const NOT_YET: Record<string, string> = {
   KeyI: 'Create Invoices',
   KeyW: 'Write Checks',
-  KeyJ: 'The Customer:Job List',
   KeyF: 'Find',
   KeyQ: 'QuickReport',
   KeyY: 'Transaction Journal',
   KeyH: 'Transaction History',
-  KeyL: 'Open List',
   KeyP: 'Print',
   KeyG: 'Go to Transfer',
   KeyT: 'The Memorized Transaction List',
@@ -58,7 +57,8 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing) return;
+      // A message box swallows keys itself; this is a second guard for anything that slips past.
+      if (e.defaultPrevented || e.isComposing || isModalOpen()) return;
       const d = deskRef.current;
       const ctrl = e.ctrlKey || e.metaKey;
       const code = e.code;
@@ -73,6 +73,16 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         if (code === 'KeyA') {
           e.preventDefault();
           d.open('accounts');
+          return;
+        }
+        if (code === 'KeyJ') {
+          e.preventDefault();
+          d.open('customers');
+          return;
+        }
+        if (code === 'KeyL') {
+          e.preventDefault();
+          openListForField(d);
           return;
         }
         if (code === 'KeyR') {
@@ -110,7 +120,7 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
       if (e.key === 'Escape' && !e.altKey && !ctrl && !e.shiftKey) {
         if (d.activeId) {
           e.preventDefault();
-          d.requestClose(d.activeId);
+          void d.requestClose(d.activeId);
         }
         return;
       }
@@ -139,6 +149,15 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
       window.removeEventListener('keyup', onKeyUp);
     };
   }, [menuRef]);
+}
+
+/** Ctrl+L: open the list behind the QuickFill field that has focus. */
+function openListForField(d: Desktop) {
+  const el = document.activeElement;
+  const listName = el instanceof HTMLElement ? el.dataset.list : undefined;
+  const kind = listName ? LIST_WINDOWS[listName] : undefined;
+  if (kind) d.open(kind);
+  else d.setStatus('Ctrl+L opens the list for the field you are in. This field has no list.');
 }
 
 function cycleWindows(d: Desktop, dir: 1 | -1) {

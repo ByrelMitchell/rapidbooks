@@ -2,13 +2,25 @@ import { applyDateKey, formatUsDate, parseUsDate } from '@rapidbooks/shared';
 import { useEffect, useRef, useState, type InputHTMLAttributes, type KeyboardEvent, type Ref } from 'react';
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
-  value: string; // ISO date
+  value: string; // ISO date, or '' when allowEmpty and blank
   onChange: (iso: string) => void;
+  /** Clearing the field sets the value to '' (otherwise a blank field goes back to the last date). */
+  allowEmpty?: boolean;
   ref?: Ref<HTMLInputElement>;
 };
 
 /** MM/DD/YYYY date field with the QuickBooks date keys (+ - T W K M H Y R). */
-export function DateField({ value, onChange, className, onKeyDown, onFocus, onBlur, ref: outerRef, ...rest }: Props) {
+export function DateField({
+  value,
+  onChange,
+  allowEmpty = false,
+  className,
+  onKeyDown,
+  onFocus,
+  onBlur,
+  ref: outerRef,
+  ...rest
+}: Props) {
   const [text, setText] = useState(formatUsDate(value));
   const ref = useRef<HTMLInputElement>(null);
   const selectNext = useRef(false);
@@ -58,7 +70,10 @@ export function DateField({ value, onChange, className, onKeyDown, onFocus, onBl
       onBlur={(e) => {
         if (text !== formatUsDate(value)) {
           const iso = parseUsDate(text);
-          if (iso) {
+          if (allowEmpty && text.trim() === '') {
+            setText('');
+            if (value !== '') onChange('');
+          } else if (iso) {
             setText(formatUsDate(iso));
             if (iso !== value) onChange(iso);
           } else {

@@ -19,12 +19,18 @@ const BLANK: Form = { type: 'BANK', name: '', isSub: false, parent_id: null, des
 
 export function AccountDialog({ winId, props }: WinProps) {
   const id = (props.id as number | null | undefined) ?? null;
+  // Set Up from a QuickFill field: the typed name, and the parent when "Parent:Child" was typed.
+  const presetParent = (props.parentId as number | null | undefined) ?? null;
   const desk = useDesktop();
   const { data: accounts } = useData<Account[]>('/api/accounts');
-  const [form, setForm, formRef] = useLiveState<Form>(BLANK);
+  const [form, setForm, formRef] = useLiveState<Form>(() => ({
+    ...BLANK,
+    name: (props.name as string | undefined) ?? '',
+    type: (props.type as AccountTypeCode | undefined) ?? BLANK.type,
+  }));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const loaded = useRef(id === null);
+  const loaded = useRef(id === null && presetParent === null);
 
   useEffect(() => {
     desk.setTitle(winId, id === null ? 'New Account' : 'Edit Account');
@@ -33,6 +39,13 @@ export function AccountDialog({ winId, props }: WinProps) {
   // Fill the form once, when editing and the accounts have loaded.
   useEffect(() => {
     if (loaded.current || !accounts) return;
+    if (id === null) {
+      // New subaccount of a preset parent: it takes the parent's type.
+      const p = accounts.find((x) => x.id === presetParent);
+      if (p) setForm((f) => ({ ...f, type: p.type, isSub: true, parent_id: p.id }));
+      loaded.current = true;
+      return;
+    }
     const a = accounts.find((x) => x.id === id);
     if (!a) {
       setError('That account no longer exists.');
@@ -49,7 +62,7 @@ export function AccountDialog({ winId, props }: WinProps) {
     };
     setForm(f);
     loaded.current = true;
-  }, [accounts, id, setForm]);
+  }, [accounts, id, presetParent, setForm]);
 
   // Possible parents: same type, not this account or any of its subaccounts.
   const parents = useMemo(() => {
@@ -86,8 +99,13 @@ export function AccountDialog({ winId, props }: WinProps) {
     };
     setSaving(true);
     try {
-      if (id === null) await api.post('/api/accounts', body);
-      else await api.put(`/api/accounts/${id}`, body);
+      if (id === null) {
+        const r = await api.post<{ id: number }>('/api/accounts', body);
+        desk.resolveWindow(winId, r.id);
+      } else {
+        await api.put(`/api/accounts/${id}`, body);
+        desk.resolveWindow(winId, id);
+      }
       desk.setStatus(`Account "${f.name.trim()}" saved.`);
       desk.refresh();
       desk.close(winId);
@@ -152,6 +170,7 @@ export function AccountDialog({ winId, props }: WinProps) {
           onChange={(pid) => update({ parent_id: pid })}
           disabled={!form.isSub}
           aria-label="Parent account"
+          listName="Account"
         />
 
         <label htmlFor={`${winId}-desc`}>Description</label>

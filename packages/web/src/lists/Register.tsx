@@ -54,13 +54,13 @@ export function Register({ winId, props }: WinProps) {
 
   const deleteTxn = async () => {
     if (!current) return;
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
     try {
       await api.del(`/api/txns/${current.txn_id}`);
       desk.setStatus('Transaction deleted.');
       desk.refresh();
     } catch (e) {
-      window.alert(errorMessage(e));
+      await desk.alert(errorMessage(e));
     }
   };
 

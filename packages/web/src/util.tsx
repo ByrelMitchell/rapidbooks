@@ -57,14 +57,24 @@ export function focusables(root: Element | null): HTMLElement[] {
   );
 }
 
+let quietBlur = false;
+/** True while commitActiveField({ quiet: true }) is blurring: fields commit but ask nothing (no Quick Add box). */
+export const isQuietBlur = () => quietBlur;
+
 /**
  * Blur the focused field so its onBlur commits whatever was typed, and return it
  * so the caller can put focus back (for example when a save fails).
+ * `quiet` is for closing a window: a QuickFill field with an unknown name does not offer Quick Add.
  */
-export function commitActiveField(): HTMLElement | null {
+export function commitActiveField(opts: { quiet?: boolean } = {}): HTMLElement | null {
   const el = document.activeElement;
   if (el instanceof HTMLElement && el !== document.body) {
-    el.blur();
+    quietBlur = !!opts.quiet;
+    try {
+      el.blur();
+    } finally {
+      quietBlur = false;
+    }
     return el;
   }
   return null;
