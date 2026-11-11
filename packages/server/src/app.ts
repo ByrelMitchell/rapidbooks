@@ -16,15 +16,16 @@ import type { DB } from './db';
 import { AppError } from './errors';
 import { createAccount, deleteAccount, listAccounts, updateAccount } from './ledger/accounts';
 import { deleteTxn, getRegister, getTxn, nextNum, saveTxn, setCleared } from './ledger/posting';
-
 import { createItem, deleteItem, getItem, listItems, updateItem } from './lists/items';
 import { createName, deleteName, getName, listNames, updateName } from './lists/names';
 import { createTerms, deleteTerms, getTerms, listTerms, updateTerms } from './lists/terms';
+import type { MailerFactory } from './mail/send';
+import { registerSalesRoutes } from './routes/sales';
 
 const Id = z.object({ id: z.coerce.number().int() });
 const NAME_KIND_CODES = NAME_KINDS.map((k) => k.code) as [NameKind, ...NameKind[]];
 
-export function buildApp(db: DB, opts: { webDist?: string } = {}) {
+export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactory } = {}) {
   const app = Fastify();
 
   app.setErrorHandler((err, _req, reply) => {
@@ -118,6 +119,9 @@ export function buildApp(db: DB, opts: { webDist?: string } = {}) {
     db.transaction(() => Object.entries(info).forEach(([k, v]) => up.run(k, v)))();
     return { ok: true };
   });
+
+  // Sales and receivables: forms' lookups, finance charges, statements, PDFs, e-mail
+  registerSalesRoutes(app, db, opts.mailer);
 
   // The built web app, when there is one (in development Vite serves it instead).
   if (opts.webDist && existsSync(opts.webDist)) {

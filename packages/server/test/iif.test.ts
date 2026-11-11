@@ -214,6 +214,8 @@ describe('IIF import edge cases', () => {
         ['!INVITEM', 'NAME', 'INVITEMTYPE', 'ACCNT', 'PRICE'],
         ['INVITEM', 'Labor', 'SERV', 'No Such Account', '10'],
         ['INVITEM', 'Rod', 'INVENTORY', 'Sales', '3.333'],
+        ['INVITEM', 'Pin', 'PART', 'Sales', '0.0375'],
+        ['INVITEM', 'Washer', 'PART', 'Sales', '1.234567'],
         ['INVITEM', 'Rod:Short', 'SERV', 'Sales', '1'],
         ['INVITEM', 'Fee', 'OTHC', 'Sales', '5%'],
         ['INVITEM', 'Pay', 'PMT', '', ''],
@@ -221,10 +223,13 @@ describe('IIF import edge cases', () => {
       ),
     );
     expect(listTerms(db).map((t) => [t.name, t.net_days])).toEqual([['Net 15', 15]]);
-    expect(r.counts).toMatchObject({ customers: 1, jobs: 0, vendors: 0, items: 3 });
+    expect(r.counts).toMatchObject({ customers: 1, jobs: 0, vendors: 0, items: 5 });
     expect(listNames(db)[0]).toMatchObject({ name: 'Acme', credit_limit: null });
     const items = listItems(db);
-    expect(items.find((i) => i.name === 'Rod')).toMatchObject({ type: 'PART', rate: 333 });
+    // Prices keep five decimal places of dollars: cents with up to three decimals.
+    expect(items.find((i) => i.name === 'Rod')).toMatchObject({ type: 'PART', rate: 333.3 });
+    expect(items.find((i) => i.name === 'Pin')!.rate).toBe(3.75);
+    expect(items.find((i) => i.name === 'Washer')!.rate).toBe(123.457); // 1.234567 rounds to 1.23457
     expect(items.find((i) => i.name === 'Short')).toMatchObject({ type: 'SERVICE', depth: 0 });
     expect(items.find((i) => i.name === 'Fee')).toMatchObject({ rate: 500, rate_is_percent: true });
     const w = r.warnings.join('\n');

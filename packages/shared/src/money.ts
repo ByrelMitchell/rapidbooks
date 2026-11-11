@@ -67,3 +67,57 @@ export function evalAmount(input: string): number | null {
     return null;
   }
 }
+
+/** Round to the nearest integer, halves away from zero (2.5 -> 3, -2.5 -> -3). */
+export function roundHalfAway(x: number): number {
+  const r = Math.round(Math.abs(x) + 1e-9);
+  return x < 0 && r !== 0 ? -r : r;
+}
+
+const QTY_PLACES = 6n;
+const RATE_PLACES = 3n;
+
+function scaled(n: number, places: bigint): bigint {
+  return BigInt(Math.round(n * 10 ** Number(places)));
+}
+
+/** Integer division of a by b, rounding halves away from zero. */
+function divRound(a: bigint, b: bigint): bigint {
+  const neg = a < 0n !== b < 0n;
+  const aa = a < 0n ? -a : a;
+  const bb = b < 0n ? -b : b;
+  let q = aa / bb;
+  if ((aa % bb) * 2n >= bb) q += 1n;
+  return neg ? -q : q;
+}
+
+/**
+ * The amount of a document line in cents: qty × rate, rounded half away from zero.
+ * rate is cents and may carry up to 3 decimals (piece prices like $0.0375 = 3.75);
+ * qty may carry up to 6 decimals. Computed exactly, without floating-point drift.
+ * A blank qty counts as 1, as on QuickBooks forms.
+ */
+export function lineAmount(qty: number | null, rate: number): number {
+  const q = scaled(qty ?? 1, QTY_PLACES);
+  const r = scaled(rate, RATE_PLACES);
+  return Number(divRound(q * r, 10n ** (QTY_PLACES + RATE_PLACES)));
+}
+
+/** pct basis points of `cents` (10% = 1000), rounded half away from zero. */
+export function percentOf(cents: number, bp: number): number {
+  return Number(divRound(BigInt(cents) * scaled(bp, RATE_PLACES), 10000n * 10n ** RATE_PLACES));
+}
+
+/**
+ * Format a rate held in cents that may carry fractions of a cent: at least two
+ * decimals of dollars, more only when needed ("12.50", "0.0375").
+ */
+export function formatRate(cents: number): string {
+  const neg = cents < 0;
+  const thousandths = Math.round(Math.abs(cents) * 1000); // 1/1000 cent = $0.00001
+  const whole = Math.floor(thousandths / 100000);
+  let frac = (thousandths % 100000).toString().padStart(5, '0');
+  while (frac.length > 2 && frac.endsWith('0')) frac = frac.slice(0, -1);
+  const w = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${neg ? '-' : ''}${w}.${frac}`;
+}

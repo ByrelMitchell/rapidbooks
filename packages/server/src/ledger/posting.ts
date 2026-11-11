@@ -1,10 +1,44 @@
-import type { RegisterRow, Split, Txn, TxnInput } from '@rapidbooks/shared';
+import {
+  dueDate,
+  lineAmount,
+  percentOf,
+  type AnyTxn,
+  type CreditMemoInput,
+  type DepositInput,
+  type DocTxn,
+  type GenJrnlInput,
+  type InvoiceInput,
+  type LineInput,
+  type PaymentInput,
+  type RegisterRow,
+  type Split,
+  type Txn,
+  type TxnInput,
+  type TxnLine,
+  type TxnLink,
+} from '@rapidbooks/shared';
 import type { DB } from '../db';
 import { AppError } from '../errors';
+import {
+  accountRow,
+  appliedFrom,
+  appliedTo,
+  canPay,
+  cap,
+  invName,
+  depositOf,
+  fullName,
+  money,
+  requireCustomer,
+  systemAccount,
+  txnRow,
+  type TxnHeaderRow,
+} from './common';
 
 // The posting engine. Every transaction type has a builder that turns the form's
-// input into ledger splits; saveTxn checks they balance and writes them. Nothing
-// else writes to the splits table.
+// input into ledger splits (plus, for documents, the header fields, lines and links
+// to store); saveTxn checks they balance and writes them. Nothing else writes to the
+// splits table.
 
 interface BuiltSplit {
   account_id: number;
@@ -13,71 +47,562 @@ interface BuiltSplit {
   memo: string;
 }
 
-type Builder = (input: TxnInput) => BuiltSplit[];
+/** Columns of txns written on every save. */
+interface Header {
+  date: string;
+  num: string;
+  name_id: number | null;
+  memo: string;
+  terms_id: number | null;
+  due_date: string;
+  po_number: string;
+  ship_date: string;
+  ship_via: string;
+  bill_addr: string;
+  ship_addr: string;
+  message: string;
+  to_print: number;
+  to_email: number;
+  pay_method: string;
+  ref_no: string;
+  account_id: number | null;
+  ar_account_id: number | null;
+  total: number;
+}
 
-const builders: Record<TxnInput['type'], Builder> = {
-  GENJRNL: (input) => input.splits.map((s) => ({ ...s })),
+interface StoredLine {
+  item_id: number | null;
+  description: string;
+  qty: number | null;
+  rate: number | null;
+  rate_is_percent: boolean;
+  amount: number;
+  account_id: number | null;
+  name_id: number | null;
+  ref_no: string;
+  pay_method: string;
+}
+
+interface BuiltLink {
+  to_txn: number;
+  amount: number;
+  discount: number;
+  discount_account_id: number | null;
+}
+
+interface Built {
+  splits: BuiltSplit[];
+  header: Header;
+  lines?: StoredLine[]; // replaces the stored lines when present
+  links?: { kind: 'apply' | 'deposit'; list: BuiltLink[] }; // replaces outgoing links of that kind
+  minSplits: number;
+}
+
+/** The transaction being replaced, when editing. */
+type Old = TxnHeaderRow | undefined;
+
+const blankHeader = (input: { date: string; num: string; name_id: number | null; memo: string }): Header => ({
+  date: input.date,
+  num: input.num,
+  name_id: input.name_id,
+  memo: input.memo,
+  terms_id: null,
+  due_date: '',
+  po_number: '',
+  ship_date: '',
+  ship_via: '',
+  bill_addr: '',
+  ship_addr: '',
+  message: '',
+  to_print: 0,
+  to_email: 0,
+  pay_method: '',
+  ref_no: '',
+  account_id: null,
+  ar_account_id: null,
+  total: 0,
+});
+
+// ---------------------------------------------------------------------------
+// GENJRNL
+
+function buildJournal(_db: DB, input: GenJrnlInput): Built {
+  const splits = input.splits.map((s) => ({ ...s }));
+  const header = blankHeader(input);
+  header.total = splits.reduce((t, s) => t + (s.amount > 0 ? s.amount : 0), 0);
+  return { splits, header, minSplits: 2 };
+}
+
+// ---------------------------------------------------------------------------
+// INVOICE and CREDITMEMO
+
+interface ItemInfo {
+  id: number;
+  name: string;
+  type: string;
+  account_id: number | null;
+}
+
+interface ComputedLine extends StoredLine {
+  posts_to: number | null; // account credited (invoice) or debited (credit memo); null = posts nothing
+}
+
+/**
+ * Work out each line's amount and where it posts:
+ *  - item line: qty × rate (rounded half away from zero) unless an amount is given;
+ *  - SUBTOTAL: the sum of the lines above it back to the previous subtotal;
+ *  - percent DISCOUNT / OTHER_CHARGE: that percentage of the line just above (or of
+ *    that subtotal); discounts are always negative;
+ *  - description-only line: nothing.
+ */
+export function computeLines(db: DB, lines: LineInput[]): ComputedLine[] {
+  const getItem = db.prepare('SELECT id, name, type, account_id FROM items WHERE id = ?');
+  const out: ComputedLine[] = [];
+  let sinceSubtotal = 0;
+
+  lines.forEach((l, i) => {
+    const n = i + 1;
+    const base: StoredLine = {
+      item_id: l.item_id,
+      description: l.description,
+      qty: l.qty,
+      rate: l.rate,
+      rate_is_percent: l.rate_is_percent,
+      amount: 0,
+      account_id: null,
+      name_id: null,
+      ref_no: '',
+      pay_method: '',
+    };
+    let posts_to: number | null = null;
+    let isSubtotal = false;
+    const plain = () => l.amount ?? (l.rate !== null ? lineAmount(l.qty, l.rate) : 0);
+
+    if (l.item_id === null) {
+      if (l.rate_is_percent) throw new AppError(400, `Line ${n} has a percentage but no item. Choose a discount or other charge item for it.`);
+      if (l.account_id !== null) {
+        const a = accountRow(db, l.account_id);
+        if (!a) throw new AppError(400, `The account on line ${n} no longer exists.`);
+        if (a.type === 'AR' || a.type === 'AP') {
+          throw new AppError(400, `Line ${n} cannot post to an Accounts Receivable or Accounts Payable account.`);
+        }
+        base.account_id = l.account_id;
+        base.amount = plain();
+        posts_to = l.account_id;
+      } else {
+        if (plain() !== 0) throw new AppError(400, `Line ${n} has an amount but no item. Choose an item for it.`);
+        base.qty = null;
+        base.rate = null;
+      }
+    } else {
+      const item = getItem.get(l.item_id) as ItemInfo | undefined;
+      if (!item) throw new AppError(400, `The item on line ${n} no longer exists.`);
+      if (item.type === 'GROUP') {
+        throw new AppError(400, `${item.name} is a group item. Its items must be listed on the form instead of the group itself.`);
+      }
+      if (item.type === 'SUBTOTAL') {
+        isSubtotal = true;
+        base.qty = null;
+        base.rate = null;
+        base.rate_is_percent = false;
+        base.amount = sinceSubtotal;
+      } else if (l.rate_is_percent) {
+        if (item.type !== 'DISCOUNT' && item.type !== 'OTHER_CHARGE') {
+          throw new AppError(400, `${item.name} cannot be a percentage. Only discount and other charge items can.`);
+        }
+        const above = out.length > 0 ? out[out.length - 1].amount : 0;
+        const pct = l.rate ?? 0;
+        base.qty = null;
+        base.amount = item.type === 'DISCOUNT' ? -percentOf(above, Math.abs(pct)) : percentOf(above, pct);
+        posts_to = item.account_id;
+      } else {
+        base.amount = plain();
+        if (item.type === 'DISCOUNT') base.amount = -Math.abs(base.amount);
+        posts_to = item.account_id;
+      }
+      if (item.type !== 'SUBTOTAL' && posts_to === null) {
+        throw new AppError(400, `${item.name} has no account to post to. Edit the item and choose one.`);
+      }
+    }
+
+    if (isSubtotal) sinceSubtotal = 0;
+    else sinceSubtotal += base.amount;
+    out.push({ ...base, posts_to });
+  });
+  return out;
+}
+
+function arAccount(db: DB, id: number | null): number {
+  if (id === null) return systemAccount(db, 'AR');
+  const a = accountRow(db, id);
+  if (!a) throw new AppError(400, 'That Accounts Receivable account no longer exists.');
+  if (a.type !== 'AR') throw new AppError(400, `${a.name} is not an Accounts Receivable account.`);
+  return id;
+}
+
+function buildSalesDoc(db: DB, input: InvoiceInput | CreditMemoInput, old: Old): Built {
+  const isInvoice = input.type === 'INVOICE';
+  const cust = requireCustomer(db, input.name_id);
+  const ar = arAccount(db, input.ar_account_id);
+
+  let terms: { net_days: number } | null = null;
+  if (input.terms_id !== null) {
+    terms = db.prepare('SELECT net_days FROM terms WHERE id = ?').get(input.terms_id) as { net_days: number } | null;
+    if (!terms) throw new AppError(400, 'Those terms no longer exist.');
+  }
+
+  const lines = computeLines(db, input.lines);
+  const posting = lines.filter((l) => l.posts_to !== null);
+  const total = posting.reduce((t, l) => t + l.amount, 0);
+  if (total < 0) {
+    throw new AppError(
+      400,
+      isInvoice
+        ? 'The total of an invoice cannot be negative. To give a customer credit, use a credit memo.'
+        : 'The total of a credit memo cannot be negative.',
+    );
+  }
+
+  if (old) {
+    // Keep what is already applied valid.
+    const links = db
+      .prepare(
+        `SELECT l.from_txn, l.to_txn, f.name_id AS from_name, t.name_id AS to_name, f.type AS from_type, f.num AS from_num
+           FROM links l JOIN txns f ON f.id = l.from_txn JOIN txns t ON t.id = l.to_txn
+          WHERE l.kind = 'apply' AND (l.to_txn = ? OR l.from_txn = ?)`,
+      )
+      .all(old.id, old.id) as { from_txn: number; to_txn: number; from_name: number; to_name: number }[];
+    if (links.length > 0) {
+      const applied = isInvoice ? appliedTo(db, old.id) : appliedFrom(db, old.id);
+      if (total < applied) {
+        throw new AppError(
+          400,
+          isInvoice
+            ? `Payments and credits of ${money(applied)} have been applied to this invoice, so its total cannot be less than that. Remove some of them first (in Receive Payments).`
+            : `${money(applied)} of this credit memo has been applied to invoices, so its total cannot be less than that. Remove some of those applications first.`,
+        );
+      }
+      if (ar !== old.ar_account_id) {
+        throw new AppError(400, `Payments or credits have been applied to this ${isInvoice ? 'invoice' : 'credit memo'}, so its Accounts Receivable account cannot be changed.`);
+      }
+      for (const l of links) {
+        const ok = isInvoice ? canPay(db, l.from_name, cust.id) : canPay(db, cust.id, l.to_name);
+        if (!ok) {
+          throw new AppError(
+            400,
+            `Payments or credits from another customer are applied to this ${isInvoice ? 'invoice' : 'credit memo'}, so it cannot be moved to ${fullName(db, cust.id)}. Remove those applications first.`,
+          );
+        }
+      }
+    }
+  }
+
+  const header = blankHeader(input);
+  Object.assign(header, {
+    terms_id: input.terms_id,
+    due_date: isInvoice ? input.due_date || dueDate(terms, input.date) : input.due_date,
+    po_number: input.po_number,
+    ship_date: input.ship_date,
+    ship_via: input.ship_via,
+    bill_addr: input.bill_addr,
+    ship_addr: input.ship_addr,
+    message: input.message,
+    to_print: input.to_print ? 1 : 0,
+    to_email: input.to_email ? 1 : 0,
+    ar_account_id: ar,
+    total,
+  });
+
+  // Invoice: Dr A/R, Cr each line's account. Credit memo: the mirror image.
+  const sign = isInvoice ? 1 : -1;
+  const splits: BuiltSplit[] = [{ account_id: ar, amount: sign * total, name_id: cust.id, memo: input.memo }];
+  for (const l of posting) {
+    splits.push({ account_id: l.posts_to!, amount: -sign * l.amount, name_id: cust.id, memo: l.description });
+  }
+  return { splits, header, lines: lines.map(({ posts_to: _p, ...l }) => l), minSplits: 1 };
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENT
+
+function buildPayment(db: DB, input: PaymentInput, old: Old): Built {
+  const cust = requireCustomer(db, input.name_id);
+  if (input.amount <= 0) throw new AppError(400, 'Enter the amount of the payment.');
+  const depositTo = input.account_id ?? systemAccount(db, 'UNDEPOSITED');
+  const dep = accountRow(db, depositTo);
+  if (!dep) throw new AppError(400, 'The account to deposit to no longer exists.');
+  if (dep.type === 'AR' || dep.type === 'AP') {
+    throw new AppError(400, 'A payment cannot be deposited to an Accounts Receivable or Accounts Payable account.');
+  }
+  const ar = arAccount(db, input.ar_account_id);
+
+  if (old) {
+    const deposit = depositOf(db, old.id);
+    if (deposit !== null && (input.amount !== old.total || depositTo !== old.account_id || cust.id !== old.name_id)) {
+      throw new AppError(
+        400,
+        'This payment has been deposited, so its amount, customer and deposit account cannot be changed. Remove it from the deposit first.',
+      );
+    }
+  }
+
+  const seen = new Set<number>();
+  const links: BuiltLink[] = [];
+  let applied = 0;
+  for (const a of input.applications) {
+    if (a.amount === 0 && a.discount === 0) continue;
+    if (seen.has(a.txn_id)) throw new AppError(400, 'The same invoice is listed twice in the payment.');
+    seen.add(a.txn_id);
+    const inv = txnRow(db, a.txn_id);
+    if (!inv) throw new AppError(400, 'One of the invoices this payment is applied to no longer exists.');
+    if (inv.type !== 'INVOICE') throw new AppError(400, 'A payment can only be applied to invoices.');
+    if (!canPay(db, cust.id, inv.name_id!)) {
+      throw new AppError(
+        400,
+        `${cap(invName(inv))} is for ${fullName(db, inv.name_id)}, so a payment from ${fullName(db, cust.id)} cannot be applied to it.`,
+      );
+    }
+    if (inv.ar_account_id !== ar) {
+      throw new AppError(400, `${cap(invName(inv))} is in a different Accounts Receivable account than this payment.`);
+    }
+    const open = inv.total - appliedTo(db, inv.id, old?.id ?? null);
+    if (a.amount + a.discount > open) {
+      throw new AppError(
+        400,
+        `The ${a.discount > 0 ? 'payment and discount' : 'payment'} applied to ${invName(inv)} (${money(a.amount + a.discount)}) is more than its open balance of ${money(open)}.`,
+      );
+    }
+    if (a.discount > 0) {
+      if (a.discount_account_id === null) throw new AppError(400, `Choose the account for the discount on ${invName(inv)}.`);
+      const da = accountRow(db, a.discount_account_id);
+      if (!da) throw new AppError(400, 'The discount account no longer exists.');
+      if (da.type === 'AR' || da.type === 'AP') {
+        throw new AppError(400, 'A discount cannot be posted to an Accounts Receivable or Accounts Payable account.');
+      }
+    }
+    applied += a.amount;
+    links.push({
+      to_txn: inv.id,
+      amount: a.amount,
+      discount: a.discount,
+      discount_account_id: a.discount > 0 ? a.discount_account_id : null,
+    });
+  }
+  if (applied > input.amount) {
+    throw new AppError(400, `You applied ${money(applied)}, but the payment is only ${money(input.amount)}. Apply less, or raise the payment amount.`);
+  }
+
+  const header = blankHeader({ ...input, num: input.ref_no });
+  Object.assign(header, {
+    pay_method: input.pay_method,
+    ref_no: input.ref_no,
+    account_id: depositTo,
+    ar_account_id: ar,
+    total: input.amount,
+  });
+
+  // Dr deposit-to, Cr A/R; each discount: Dr discount account, Cr A/R.
+  const splits: BuiltSplit[] = [
+    { account_id: depositTo, amount: input.amount, name_id: cust.id, memo: input.memo },
+    { account_id: ar, amount: -input.amount, name_id: cust.id, memo: input.memo },
+  ];
+  for (const l of links) {
+    if (l.discount === 0) continue;
+    const memo = `Discount on ${invName(txnRow(db, l.to_txn) as TxnHeaderRow)}`;
+    splits.push({ account_id: l.discount_account_id!, amount: l.discount, name_id: cust.id, memo });
+    splits.push({ account_id: ar, amount: -l.discount, name_id: cust.id, memo });
+  }
+  return { splits, header, links: { kind: 'apply', list: links }, minSplits: 2 };
+}
+
+// ---------------------------------------------------------------------------
+// DEPOSIT
+
+function buildDeposit(db: DB, input: DepositInput, old: Old): Built {
+  if (input.account_id === null) throw new AppError(400, 'Choose the account to deposit to.');
+  const bank = accountRow(db, input.account_id);
+  if (!bank) throw new AppError(400, 'The account to deposit to no longer exists.');
+  const uf = systemAccount(db, 'UNDEPOSITED');
+  if (bank.id === uf) throw new AppError(400, 'Choose a bank account to deposit to, not Undeposited Funds.');
+  if (bank.type === 'AR' || bank.type === 'AP') {
+    throw new AppError(400, 'A deposit cannot go into an Accounts Receivable or Accounts Payable account.');
+  }
+
+  const splits: BuiltSplit[] = [];
+  const links: BuiltLink[] = [];
+  let total = 0;
+  const seen = new Set<number>();
+  for (const pid of input.payment_ids) {
+    if (seen.has(pid)) throw new AppError(400, 'The same payment is listed twice in the deposit.');
+    seen.add(pid);
+    const p = txnRow(db, pid);
+    if (!p || p.type !== 'PAYMENT') throw new AppError(400, 'One of the payments in this deposit no longer exists.');
+    const who = fullName(db, p.name_id);
+    if (p.account_id !== uf) {
+      throw new AppError(400, `The payment from ${who} was not received into Undeposited Funds, so it cannot be put in a deposit.`);
+    }
+    const inDeposit = depositOf(db, pid);
+    if (inDeposit !== null && inDeposit !== old?.id) {
+      throw new AppError(400, `The payment from ${who}${p.ref_no ? ` (check ${p.ref_no})` : ''} is already in another deposit.`);
+    }
+    total += p.total;
+    links.push({ to_txn: pid, amount: p.total, discount: 0, discount_account_id: null });
+    splits.push({ account_id: uf, amount: -p.total, name_id: p.name_id, memo: input.memo });
+  }
+
+  const lines: StoredLine[] = [];
+  input.lines.forEach((l, i) => {
+    if (l.account_id === null && l.amount === 0) return; // a blank row
+    if (l.account_id === null) throw new AppError(400, `Choose the account that line ${i + 1} of the deposit comes from.`);
+    const a = accountRow(db, l.account_id);
+    if (!a) throw new AppError(400, `The account on line ${i + 1} of the deposit no longer exists.`);
+    if (l.name_id !== null && !db.prepare('SELECT 1 FROM names WHERE id = ?').get(l.name_id)) {
+      throw new AppError(400, `The name on line ${i + 1} of the deposit no longer exists.`);
+    }
+    total += l.amount;
+    lines.push({
+      item_id: null,
+      description: l.description,
+      qty: null,
+      rate: null,
+      rate_is_percent: false,
+      amount: l.amount,
+      account_id: l.account_id,
+      name_id: l.name_id,
+      ref_no: l.ref_no,
+      pay_method: l.pay_method,
+    });
+    splits.push({ account_id: l.account_id, amount: -l.amount, name_id: l.name_id, memo: l.description });
+  });
+
+  if (links.length === 0 && lines.length === 0) throw new AppError(400, 'A deposit needs at least one payment or line.');
+  if (total < 0) throw new AppError(400, 'The deposit total cannot be negative.');
+
+  splits.unshift({ account_id: bank.id, amount: total, name_id: null, memo: input.memo });
+  const header = blankHeader({ ...input, name_id: null });
+  header.account_id = bank.id;
+  header.total = total;
+  return { splits, header, lines, links: { kind: 'deposit', list: links }, minSplits: 2 };
+}
+
+// ---------------------------------------------------------------------------
+
+type Builders = { [K in TxnInput['type']]: (db: DB, input: Extract<TxnInput, { type: K }>, old: Old) => Built };
+
+const builders: Builders = {
+  GENJRNL: buildJournal,
+  INVOICE: buildSalesDoc,
+  CREDITMEMO: buildSalesDoc,
+  PAYMENT: buildPayment,
+  DEPOSIT: buildDeposit,
 };
 
-function validate(db: DB, splits: BuiltSplit[]) {
-  if (splits.length < 2) throw new AppError(400, 'A transaction needs at least two lines.');
+function build(db: DB, input: TxnInput, old: Old): Built {
+  return (builders[input.type] as (db: DB, input: TxnInput, old: Old) => Built)(db, input, old);
+}
+
+function validate(db: DB, splits: BuiltSplit[], minSplits: number) {
+  if (splits.length < minSplits) throw new AppError(400, 'A transaction needs at least two lines.');
   const sum = splits.reduce((t, s) => t + s.amount, 0);
   if (sum !== 0) {
     throw new AppError(400, 'The transaction is not in balance. Make sure the debits equal the credits.');
   }
   const exists = db.prepare('SELECT 1 FROM accounts WHERE id = ?');
   for (const s of splits) {
+    if (!Number.isInteger(s.amount)) throw new Error('posting: split amount is not whole cents');
     if (!exists.get(s.account_id)) throw new AppError(400, 'One of the accounts on this transaction no longer exists.');
   }
 }
 
-/** Create a transaction (no id) or replace an existing one (id given; input.version must match). */
-export function saveTxn(db: DB, input: TxnInput, id?: number): { id: number; version: number } {
-  const splits = builders[input.type](input);
-  validate(db, splits);
+const HEADER_COLS = [
+  'date', 'num', 'name_id', 'memo', 'terms_id', 'due_date', 'po_number', 'ship_date', 'ship_via', 'bill_addr',
+  'ship_addr', 'message', 'to_print', 'to_email', 'pay_method', 'ref_no', 'account_id', 'ar_account_id', 'total',
+] as const;
 
+interface SaveOpts {
+  /** Internal: re-post without a version check (a payment whose invoice was deleted). */
+  repost?: boolean;
+  /** Internal: mark a new invoice as a finance charge. */
+  isFinanceCharge?: boolean;
+}
+
+/** Create a transaction (no id) or replace an existing one (id given; input.version must match). */
+export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {}): { id: number; version: number } {
   return db.transaction(() => {
     let version = 1;
     let oldSplits: { seq: number; account_id: number; amount: number; cleared: number }[] = [];
     let txnId: number;
+    let old: Old;
 
-    if (id === undefined) {
-      const r = db
-        .prepare('INSERT INTO txns (type, date, num, name_id, memo) VALUES (?, ?, ?, ?, ?)')
-        .run(input.type, input.date, input.num, input.name_id, input.memo);
-      txnId = Number(r.lastInsertRowid);
-    } else {
-      const old = db.prepare('SELECT type, version FROM txns WHERE id = ?').get(id) as
-        | { type: string; version: number }
-        | undefined;
+    if (id !== undefined) {
+      old = txnRow(db, id);
       if (!old) throw new AppError(404, 'That transaction no longer exists.');
       if (old.type !== input.type) throw new AppError(400, 'The type of a transaction cannot be changed.');
-      if (input.version !== old.version) {
+      if (!opts.repost && input.version !== old.version) {
         throw new AppError(409, 'This transaction was changed in another window. Reopen it and try again.');
       }
+    }
+
+    const built = build(db, input, old);
+    validate(db, built.splits, built.minSplits);
+    const h = built.header;
+    const values = HEADER_COLS.map((c) => h[c]);
+
+    if (old === undefined) {
+      const r = db
+        .prepare(
+          `INSERT INTO txns (type, ${HEADER_COLS.join(', ')}, is_finance_charge)
+           VALUES (?, ${HEADER_COLS.map(() => '?').join(', ')}, ?)`,
+        )
+        .run(input.type, ...values, opts.isFinanceCharge ? 1 : 0);
+      txnId = Number(r.lastInsertRowid);
+    } else {
       version = old.version + 1;
-      txnId = id;
+      txnId = old.id;
       oldSplits = db
         .prepare('SELECT seq, account_id, amount, cleared FROM splits WHERE txn_id = ?')
-        .all(id) as typeof oldSplits;
+        .all(txnId) as typeof oldSplits;
       db.prepare(
-        "UPDATE txns SET date = ?, num = ?, name_id = ?, memo = ?, version = ?, updated_at = datetime('now') WHERE id = ?",
-      ).run(input.date, input.num, input.name_id, input.memo, version, id);
-      db.prepare('DELETE FROM splits WHERE txn_id = ?').run(id);
+        `UPDATE txns SET ${HEADER_COLS.map((c) => `${c} = ?`).join(', ')}, version = ?, updated_at = datetime('now') WHERE id = ?`,
+      ).run(...values, version, txnId);
+      db.prepare('DELETE FROM splits WHERE txn_id = ?').run(txnId);
     }
 
     const ins = db.prepare(
       'INSERT INTO splits (txn_id, seq, account_id, amount, name_id, memo, cleared) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
-    splits.forEach((s, seq) => {
+    built.splits.forEach((s, seq) => {
       // A line that still has the same account and amount keeps its cleared mark.
       const was = oldSplits.find((o) => o.seq === seq);
       const cleared = was && was.account_id === s.account_id && was.amount === s.amount ? was.cleared : 0;
       ins.run(txnId, seq, s.account_id, s.amount, s.name_id, s.memo, cleared);
     });
 
+    if (built.lines) {
+      db.prepare('DELETE FROM lines WHERE txn_id = ?').run(txnId);
+      const insLine = db.prepare(
+        `INSERT INTO lines (txn_id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no, pay_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      built.lines.forEach((l, seq) =>
+        insLine.run(
+          txnId, seq, l.item_id, l.description, l.qty, l.rate, l.rate_is_percent ? 1 : 0, l.amount, l.account_id,
+          l.name_id, l.ref_no, l.pay_method,
+        ),
+      );
+    }
+    if (built.links) {
+      db.prepare('DELETE FROM links WHERE from_txn = ? AND kind = ?').run(txnId, built.links.kind);
+      const insLink = db.prepare(
+        'INSERT INTO links (from_txn, to_txn, kind, amount, discount, discount_account_id) VALUES (?, ?, ?, ?, ?, ?)',
+      );
+      for (const l of built.links.list) {
+        insLink.run(txnId, l.to_txn, built.links.kind, l.amount, l.discount, l.discount_account_id);
+      }
+    }
+
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
-      id === undefined ? 'create' : 'update',
+      opts.repost ? 'repost' : old === undefined ? 'create' : 'update',
       txnId,
       JSON.stringify(input),
     );
@@ -85,23 +610,116 @@ export function saveTxn(db: DB, input: TxnInput, id?: number): { id: number; ver
   })();
 }
 
-export function getTxn(db: DB, id: number): Txn {
-  const t = db.prepare('SELECT id, type, date, num, name_id, memo, version FROM txns WHERE id = ?').get(id) as
-    | Omit<Txn, 'splits'>
-    | undefined;
-  if (!t) throw new AppError(404, 'That transaction no longer exists.');
+/** Rebuild a payment's splits from what is stored (after one of its applications went away). */
+function repostPayment(db: DB, id: number) {
+  const p = txnRow(db, id)!;
+  const apps = db
+    .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
+    .all(id) as PaymentInput['applications'];
+  const input: PaymentInput = {
+    type: 'PAYMENT',
+    date: p.date,
+    num: p.num,
+    name_id: p.name_id,
+    memo: p.memo,
+    amount: p.total,
+    pay_method: p.pay_method,
+    ref_no: p.ref_no,
+    account_id: p.account_id,
+    ar_account_id: p.ar_account_id,
+    applications: apps,
+  };
+  saveTxn(db, input, id, { repost: true });
+}
+
+const LINE_COLS =
+  'id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no, pay_method';
+
+function linksOf(db: DB, id: number, dir: 'out' | 'in'): TxnLink[] {
+  const [mine, other] = dir === 'out' ? ['from_txn', 'to_txn'] : ['to_txn', 'from_txn'];
+  return db
+    .prepare(
+      `SELECT l.id, l.kind, o.id AS txn_id, o.type, o.num, o.date, o.name_id, l.amount, l.discount, l.discount_account_id
+         FROM links l JOIN txns o ON o.id = l.${other}
+        WHERE l.${mine} = ?
+        ORDER BY o.date, o.id`,
+    )
+    .all(id) as TxnLink[];
+}
+
+export function getTxn(db: DB, id: number): AnyTxn {
+  const row = txnRow(db, id);
+  if (!row) throw new AppError(404, 'That transaction no longer exists.');
   const splits = (
     db
       .prepare('SELECT id, seq, account_id, amount, name_id, memo, cleared FROM splits WHERE txn_id = ? ORDER BY seq')
       .all(id) as (Omit<Split, 'cleared'> & { cleared: number })[]
   ).map((s) => ({ ...s, cleared: !!s.cleared }));
-  return { ...t, splits };
+  const base: Txn = {
+    id: row.id,
+    type: row.type,
+    date: row.date,
+    num: row.num,
+    name_id: row.name_id,
+    memo: row.memo,
+    version: row.version,
+    splits,
+  };
+  if (row.type === 'GENJRNL') return base;
+
+  const lines = (db.prepare(`SELECT ${LINE_COLS} FROM lines WHERE txn_id = ? ORDER BY seq`).all(id) as (Omit<
+    TxnLine,
+    'rate_is_percent'
+  > & { rate_is_percent: number })[]).map((l) => ({ ...l, rate_is_percent: !!l.rate_is_percent }));
+  const links_out = linksOf(db, id, 'out');
+  const links_in = linksOf(db, id, 'in');
+  const t = row.type as DocTxn['type'];
+  const doc: DocTxn = {
+    ...base,
+    type: t,
+    ar_account_id: row.ar_account_id,
+    account_id: row.account_id,
+    terms_id: row.terms_id,
+    due_date: row.due_date,
+    po_number: row.po_number,
+    ship_date: row.ship_date,
+    ship_via: row.ship_via,
+    bill_addr: row.bill_addr,
+    ship_addr: row.ship_addr,
+    message: row.message,
+    to_print: !!row.to_print,
+    to_email: !!row.to_email,
+    emailed_at: row.emailed_at,
+    pay_method: row.pay_method,
+    ref_no: row.ref_no,
+    is_finance_charge: !!row.is_finance_charge,
+    lines,
+    links_out,
+    links_in,
+    total: row.total,
+    open_balance: t === 'INVOICE' ? row.total - appliedTo(db, id) : null,
+    unapplied: t === 'PAYMENT' || t === 'CREDITMEMO' ? row.total - appliedFrom(db, id) : null,
+    deposit_id: t === 'PAYMENT' ? depositOf(db, id) : null,
+    payment_ids: t === 'DEPOSIT' ? links_out.filter((l) => l.kind === 'deposit').map((l) => l.txn_id) : [],
+  };
+  return doc;
 }
 
 export function deleteTxn(db: DB, id: number) {
   db.transaction(() => {
     const before = getTxn(db, id);
-    db.prepare('DELETE FROM txns WHERE id = ?').run(id);
+    if (before.type === 'PAYMENT' && depositOf(db, id) !== null) {
+      throw new AppError(400, 'This payment has been deposited. Remove it from the deposit first, then delete it.');
+    }
+    // Payments that took a discount on this invoice must drop the discount posting.
+    const repost =
+      before.type === 'INVOICE'
+        ? (db
+            .prepare("SELECT DISTINCT from_txn FROM links WHERE kind = 'apply' AND to_txn = ? AND discount <> 0")
+            .all(id) as { from_txn: number }[]).map((r) => r.from_txn)
+        : [];
+    db.prepare('DELETE FROM txns WHERE id = ?').run(id); // splits, lines and links go with it
+    for (const p of repost) repostPayment(db, p);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       'delete',
       id,
@@ -110,29 +728,85 @@ export function deleteTxn(db: DB, id: number) {
   })();
 }
 
-export function setCleared(db: DB, splitId: number, cleared: boolean) {
-  const r = db.prepare('UPDATE splits SET cleared = ? WHERE id = ?').run(cleared ? 1 : 0, splitId);
-  if (r.changes === 0) throw new AppError(404, 'That transaction no longer exists.');
+/**
+ * Remove one payment or credit application (an "apply" link). No ledger posting
+ * changes, except that a discount taken on that invoice is reversed.
+ */
+export function removeApplication(db: DB, linkId: number) {
+  db.transaction(() => {
+    const l = db.prepare('SELECT * FROM links WHERE id = ?').get(linkId) as
+      | { id: number; from_txn: number; kind: string; discount: number }
+      | undefined;
+    if (!l) throw new AppError(404, 'That application no longer exists.');
+    if (l.kind !== 'apply') throw new AppError(400, 'To take a payment out of a deposit, edit the deposit.');
+    db.prepare('DELETE FROM links WHERE id = ?').run(linkId);
+    if (l.discount !== 0) repostPayment(db, l.from_txn);
+    else db.prepare('UPDATE txns SET version = version + 1 WHERE id = ?').run(l.from_txn);
+    db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
+      'unapply',
+      l.from_txn,
+      JSON.stringify(l),
+    );
+  })();
 }
 
-/** The next number for a transaction type: one more than the highest numeric number in use. */
+export function setCleared(db: DB, splitId: number, cleared: boolean) {
+  const s = db
+    .prepare('SELECT s.txn_id, s.account_id, t.type FROM splits s JOIN txns t ON t.id = s.txn_id WHERE s.id = ?')
+    .get(splitId) as { txn_id: number; account_id: number; type: string } | undefined;
+  if (!s) throw new AppError(404, 'That transaction no longer exists.');
+  if (s.type === 'GENJRNL') {
+    db.prepare('UPDATE splits SET cleared = ? WHERE id = ?').run(cleared ? 1 : 0, splitId);
+  } else {
+    // Documents show one register row per account, so the mark covers all of its splits there.
+    db.prepare('UPDATE splits SET cleared = ? WHERE txn_id = ? AND account_id = ?').run(
+      cleared ? 1 : 0,
+      s.txn_id,
+      s.account_id,
+    );
+  }
+}
+
+/**
+ * The next number for a transaction type: one more than the highest numeric number in
+ * use. Invoices and credit memos share one sequence, as in QuickBooks.
+ */
 export function nextNum(db: DB, type: string): string {
+  const types = type === 'INVOICE' || type === 'CREDITMEMO' ? ['INVOICE', 'CREDITMEMO'] : [type];
   const r = db
-    .prepare("SELECT MAX(CAST(num AS INTEGER)) AS n FROM txns WHERE type = ? AND num GLOB '[0-9]*'")
-    .get(type) as { n: number | null };
+    .prepare(
+      `SELECT MAX(CAST(num AS INTEGER)) AS n FROM txns
+        WHERE type IN (${types.map(() => '?').join(', ')}) AND num GLOB '[0-9]*'`,
+    )
+    .get(...types) as { n: number | null };
   return String((r.n ?? 0) + 1);
 }
 
-/** Every split posted to an account, oldest first, with a running balance. */
+/** The next finance-charge number: "FC 1", "FC 2", ... */
+export function nextFinanceChargeNum(db: DB): string {
+  const r = db
+    .prepare("SELECT MAX(CAST(SUBSTR(num, 4) AS INTEGER)) AS n FROM txns WHERE type = 'INVOICE' AND num GLOB 'FC [0-9]*'")
+    .get() as { n: number | null };
+  return `FC ${(r.n ?? 0) + 1}`;
+}
+
+/**
+ * Every split posted to an account, oldest first, with a running balance. A document
+ * (invoice, payment, deposit...) shows as one row per account it touches, so an
+ * invoice is one A/R row and a deposit one Undeposited Funds row.
+ */
 export function getRegister(db: DB, accountId: number): RegisterRow[] {
   const rows = db
     .prepare(
       `SELECT s.id AS split_id, t.id AS txn_id, t.date, t.num, t.type,
               n.name AS name,
               CASE WHEN s.memo <> '' THEN s.memo ELSE t.memo END AS memo,
+              t.memo AS txn_memo,
               s.amount, s.cleared,
               (SELECT COUNT(*) FROM splits o WHERE o.txn_id = t.id) AS n_splits,
-              (SELECT o.account_id FROM splits o WHERE o.txn_id = t.id AND o.id <> s.id ORDER BY o.seq LIMIT 1) AS other
+              (SELECT o.account_id FROM splits o WHERE o.txn_id = t.id AND o.id <> s.id ORDER BY o.seq LIMIT 1) AS other,
+              (SELECT COUNT(DISTINCT o.account_id) FROM splits o WHERE o.txn_id = t.id AND o.account_id <> s.account_id) AS n_other,
+              (SELECT MIN(o.account_id) FROM splits o WHERE o.txn_id = t.id AND o.account_id <> s.account_id) AS other_doc
          FROM splits s
          JOIN txns t ON t.id = s.txn_id
          LEFT JOIN names n ON n.id = COALESCE(s.name_id, t.name_id)
@@ -143,11 +817,28 @@ export function getRegister(db: DB, accountId: number): RegisterRow[] {
     cleared: number;
     n_splits: number;
     other: number | null;
+    n_other: number;
+    other_doc: number | null;
+    txn_memo: string;
   })[];
 
+  const out: RegisterRow[] = [];
   let balance = 0;
-  return rows.map(({ n_splits, other, cleared, ...r }) => {
+  for (const { n_splits, other, n_other, other_doc, cleared, txn_memo, ...r } of rows) {
     balance += r.amount;
-    return { ...r, cleared: !!cleared, other_account_id: n_splits === 2 ? other : null, balance };
-  });
+    const prev = out[out.length - 1];
+    if (r.type !== 'GENJRNL' && prev && prev.txn_id === r.txn_id) {
+      prev.amount += r.amount;
+      prev.balance = balance;
+      prev.cleared = prev.cleared && !!cleared;
+      continue;
+    }
+    if (r.type === 'GENJRNL') {
+      out.push({ ...r, cleared: !!cleared, other_account_id: n_splits === 2 ? other : null, balance });
+    } else {
+      // A document's row shows its header memo and the other account when there is only one.
+      out.push({ ...r, memo: txn_memo || r.memo, cleared: !!cleared, other_account_id: n_other === 1 ? other_doc : null, balance });
+    }
+  }
+  return out;
 }

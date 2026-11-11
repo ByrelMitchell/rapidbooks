@@ -107,6 +107,9 @@ function normalize(db: DB, input: ItemInput, selfId: number | null): ItemInput {
     if (input.type === 'DISCOUNT' && input.rate < 0) {
       throw new AppError(400, 'Enter the discount as a positive amount or percentage; it is subtracted automatically.');
     }
+    if (input.rate_is_percent && !Number.isInteger(input.rate)) {
+      throw new AppError(400, 'A percentage can have at most two decimal places.');
+    }
     if (input.rate_is_percent && Math.abs(input.rate) > 10000) {
       throw new AppError(400, 'The percentage cannot be more than 100%.');
     }
@@ -191,9 +194,9 @@ function isGroupMember(db: DB, id: number) {
 
 export function deleteItem(db: DB, id: number) {
   const row = getRow(db, id);
-  // TODO(phase 3): refuse when the item is used on transaction lines, once the `lines`
-  // table exists: "<name> has been used on transactions and cannot be deleted. You can
-  // make it inactive instead."
+  if (db.prepare('SELECT 1 FROM lines WHERE item_id = ? LIMIT 1').get(id)) {
+    throw new AppError(400, `${row.name} has been used on transactions and cannot be deleted. You can make it inactive instead.`);
+  }
   const kids = db.prepare('SELECT COUNT(*) AS n FROM items WHERE parent_id = ?').get(id) as { n: number };
   if (kids.n > 0) throw new AppError(400, `${row.name} has subitems and cannot be deleted.`);
   if (isGroupMember(db, id)) {

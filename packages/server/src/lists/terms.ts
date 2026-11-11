@@ -52,7 +52,9 @@ export function updateTerms(db: DB, id: number, input: TermsInput) {
 
 export function deleteTerms(db: DB, id: number) {
   const t = getTerms(db, id);
-  const used = db.prepare('SELECT COUNT(*) AS n FROM names WHERE terms_id = ?').get(id) as { n: number };
+  const used = db
+    .prepare('SELECT (SELECT COUNT(*) FROM names WHERE terms_id = ?) + (SELECT COUNT(*) FROM txns WHERE terms_id = ?) AS n')
+    .get(id, id) as { n: number };
   if (used.n > 0) {
     throw new AppError(400, `The terms "${t.name}" are in use and cannot be deleted. You can make them inactive instead.`);
   }

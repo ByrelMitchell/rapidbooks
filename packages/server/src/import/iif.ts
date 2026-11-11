@@ -602,7 +602,10 @@ function importItems(
     const price = (f.PRICE ?? '').trim();
     if (price !== '' && type !== 'SUBTOTAL' && type !== 'GROUP') {
       const isPct = price.endsWith('%');
-      const v = parseDecimal(isPct ? price.slice(0, -1) : price, 2);
+      // Money prices keep up to 5 decimal places of dollars (piece prices like 0.0375),
+      // stored as cents with up to 3 decimals; percentages are basis points.
+      const raw = parseDecimal(isPct ? price.slice(0, -1) : price, isPct ? 2 : 5);
+      const v = raw === null ? null : isPct ? raw : raw / 1000;
       if (v === null) warn(`Item "${full}": the price "${price}" is not an amount, so the rate was left at 0.`);
       else if (isPct && type !== 'DISCOUNT' && type !== 'OTHER_CHARGE') {
         warn(`Item "${full}": a percentage price only works on discount and other charge items, so the rate was left at 0.`);
