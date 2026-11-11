@@ -31,12 +31,17 @@ const COLUMNS: Column[] = [
 ];
 
 export async function renderStatementPdf(db: DB, customerId: number, from: string, to: string): Promise<Buffer> {
+  return finish(drawStatement(db, customerId, from, to));
+}
+
+/** Draw into `into.doc` from page `into.start` (a combined PDF), or into a new document. */
+export function drawStatement(db: DB, customerId: number, from: string, to: string, into?: { doc: Doc; start: number }): Doc {
   const s = getStatement(db, customerId, from, to);
   const company = companyInfo(db);
   const cust = nameRow(db, customerId)!;
   const toText = s.bill_addr.trim() ? s.bill_addr : cust.company || s.full_name;
 
-  const doc = newDoc(`Statement ${s.full_name}`);
+  const doc = into?.doc ?? newDoc(`Statement ${s.full_name}`);
   const dateBox = (d: Doc, y: number) => drawFieldBox(d, RIGHT - 100, y, [{ label: 'Date', value: formatUsDate(s.to), width: 100 }]);
 
   const header = (d: Doc, page: number): number => {
@@ -79,6 +84,6 @@ export async function renderStatementPdf(db: DB, customerId: number, from: strin
     { label: 'Amount Due', value: dollars(s.ending_balance), width: dueW, align: 'right' as const },
   ], 16, 7);
 
-  drawPageNumbers(doc);
-  return finish(doc);
+  drawPageNumbers(doc, into?.start ?? 0);
+  return doc;
 }

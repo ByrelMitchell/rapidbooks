@@ -64,6 +64,11 @@ export function loadSalesDoc(db: DB, id: number): DocTxn {
 }
 
 export async function renderSalesDocPdf(db: DB, id: number): Promise<Buffer> {
+  return finish(drawSalesDoc(db, id));
+}
+
+/** Draw into `into.doc` from page `into.start` (a combined PDF), or into a new document. */
+export function drawSalesDoc(db: DB, id: number, into?: { doc: Doc; start: number }): Doc {
   const t = loadSalesDoc(db, id);
   const isInvoice = t.type === 'INVOICE';
   const title = isInvoice ? 'Invoice' : 'Credit Memo';
@@ -75,7 +80,7 @@ export async function renderSalesDocPdf(db: DB, id: number): Promise<Buffer> {
       : '';
   const itemName = db.prepare('SELECT name FROM items WHERE id = ?');
 
-  const doc = newDoc(`${title} ${t.num}`);
+  const doc = into?.doc ?? newDoc(`${title} ${t.num}`);
 
   const dateBox = (d: Doc, y: number) =>
     drawFieldBox(d, RIGHT - 180, y, [
@@ -158,6 +163,6 @@ export async function renderSalesDocPdf(db: DB, id: number): Promise<Buffer> {
     });
   }
 
-  drawPageNumbers(doc);
-  return finish(doc);
+  drawPageNumbers(doc, into?.start ?? 0);
+  return doc;
 }

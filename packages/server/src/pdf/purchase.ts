@@ -40,9 +40,14 @@ function vendorBox(db: DB, t: PurchTxn): string {
 }
 
 export async function renderPurchaseOrderPdf(db: DB, t: PurchTxn): Promise<Buffer> {
+  return finish(drawPurchaseOrder(db, t));
+}
+
+/** Draw into `into.doc` from page `into.start` (a combined PDF), or into a new document. */
+export function drawPurchaseOrder(db: DB, t: PurchTxn, into?: { doc: Doc; start: number }): Doc {
   const company = companyInfo(db);
   const itemName = db.prepare('SELECT name FROM items WHERE id = ?');
-  const doc = newDoc(`Purchase Order ${t.num}`);
+  const doc = into?.doc ?? newDoc(`Purchase Order ${t.num}`);
   // With nothing typed in Ship To, the goods come to the company.
   const shipTo = t.ship_addr.trim() ? t.ship_addr : [company.name, company.address].filter((s) => s.trim()).join('\n');
 
@@ -92,6 +97,6 @@ export async function renderPurchaseOrderPdf(db: DB, t: PurchTxn): Promise<Buffe
     });
   }
 
-  drawPageNumbers(doc);
-  return finish(doc);
+  drawPageNumbers(doc, into?.start ?? 0);
+  return doc;
 }

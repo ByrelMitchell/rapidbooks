@@ -224,11 +224,31 @@ export function drawTable(
   return { bottom };
 }
 
-/** "Page n of m" at the foot of every page. */
-export function drawPageNumbers(doc: Doc) {
+/**
+ * "Page n of m" at the foot of every page from page index `start` on (a document drawn
+ * into a combined PDF numbers its own pages).
+ */
+export function drawPageNumbers(doc: Doc, start = 0) {
   const range = doc.bufferedPageRange();
-  for (let i = 0; i < range.count; i++) {
-    doc.switchToPage(range.start + i);
-    text(doc, `Page ${i + 1} of ${range.count}`, M, FOOTER_Y, { width: CONTENT_W, align: 'center', size: 8.5 });
+  const end = range.start + range.count;
+  const count = end - start;
+  for (let i = start; i < end; i++) {
+    doc.switchToPage(i);
+    text(doc, `Page ${i - start + 1} of ${count}`, M, FOOTER_Y, { width: CONTENT_W, align: 'center', size: 8.5 });
   }
+}
+
+/**
+ * One PDF of several documents, each starting on a new page with its own page numbers.
+ * `draw(doc, index, start)` draws document `index` from page `start` (it calls
+ * drawPageNumbers(doc, start) itself).
+ */
+export function combinedDoc(title: string, count: number, draw: (doc: Doc, index: number, start: number) => void): Promise<Buffer> {
+  const doc = newDoc(title);
+  for (let i = 0; i < count; i++) {
+    if (i > 0) doc.addPage();
+    const start = doc.bufferedPageRange().start + doc.bufferedPageRange().count - 1;
+    draw(doc, i, start);
+  }
+  return finish(doc);
 }

@@ -21,6 +21,7 @@ import { createName, deleteName, getName, listNames, updateName } from './lists/
 import { createTerms, deleteTerms, getTerms, listTerms, updateTerms } from './lists/terms';
 import type { MailerFactory } from './mail/send';
 import { registerPurchaseRoutes } from './routes/purchases';
+import { registerReportRoutes } from './routes/reports';
 import { registerSalesRoutes } from './routes/sales';
 
 const Id = z.object({ id: z.coerce.number().int() });
@@ -130,6 +131,9 @@ export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactor
 
   // Purchases and banking: Pay Bills, check numbers and printing, payroll items
   registerPurchaseRoutes(app, db);
+
+  // Reports, Find, graphs, combined PDFs (Phase 5)
+  registerReportRoutes(app, db);
 
   // The built web app, when there is one (in development Vite serves it instead).
   if (opts.webDist && existsSync(opts.webDist)) {

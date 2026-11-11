@@ -86,6 +86,11 @@ const COL_STUB: Column[] = [
 ];
 
 export async function renderCheckRecordPdf(db: DB, t: PurchTxn): Promise<Buffer> {
+  return finish(drawCheckRecord(db, t));
+}
+
+/** Draw into `into.doc` from page `into.start` (a combined PDF), or into a new document. */
+export function drawCheckRecord(db: DB, t: PurchTxn, into?: { doc: Doc; start: number }): Doc {
   const company = companyInfo(db);
   const bank = t.account_id !== null ? fullAccountName(db, t.account_id) : '';
   const payee =
@@ -94,7 +99,7 @@ export async function renderCheckRecordPdf(db: DB, t: PurchTxn): Promise<Buffer>
   const address = t.address.trim() ? t.address : (payee?.bill_addr ?? '');
   const checkNo = t.to_print ? 'To Print' : t.num;
 
-  const doc = newDoc(`${TITLE} ${t.num}`);
+  const doc = into?.doc ?? newDoc(`${TITLE} ${t.num}`);
 
   /** The check face. Returns the y below it. */
   const face = (d: Doc): number => {
@@ -243,8 +248,8 @@ export async function renderCheckRecordPdf(db: DB, t: PurchTxn): Promise<Buffer>
     text(doc, value, x0 + labelW, y + 5, { width: valueW - 6, align: 'right', bold: i === 0, size: 10 });
   });
 
-  drawPageNumbers(doc);
-  return finish(doc);
+  drawPageNumbers(doc, into?.start ?? 0);
+  return doc;
 }
 
 function fullAccountName(db: DB, id: number): string {

@@ -35,6 +35,7 @@ import {
 import { isPurchasePrintable, loadPurchasePrintable, purchaseFileName, renderPurchasePdf } from '../pdf/check';
 import { docFileName, loadSalesDoc, renderSalesDocPdf } from '../pdf/invoice';
 import { renderStatementPdf } from '../pdf/statement';
+import { renderStatementsPdf } from '../pdf/combined';
 
 const Id = z.object({ id: z.coerce.number().int() });
 const DateQ = z.string().refine(isIsoDate, { message: 'Enter a valid date.' });
@@ -117,6 +118,14 @@ export function registerSalesRoutes(app: FastifyInstance, db: DB, mailer: Mailer
     return listStatementCustomers(db, q.from, q.to);
   });
   app.get('/api/statements/pdf', async (req, reply) => {
+    // customer_ids=1,2,3: one combined PDF, each statement on its own pages (Phase 5).
+    const multi = (req.query as Record<string, string | undefined>).customer_ids;
+    if (multi !== undefined) {
+      const m = z.object({ customer_ids: z.string(), from: DateQ, to: DateQ }).parse(req.query);
+      const ids = m.customer_ids.split(',').filter((s) => s.trim() !== '').map((s) => z.coerce.number().int().parse(s.trim()));
+      const pdf = await renderStatementsPdf(db, ids, m.from, m.to);
+      return reply.type('application/pdf').header('Content-Disposition', pdfName('Statements.pdf')).send(pdf);
+    }
     const q = StatementQ.parse(req.query);
     const pdf = await renderStatementPdf(db, q.customer_id, q.from, q.to);
     const s = customerFileName(db, q.customer_id);
