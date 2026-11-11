@@ -287,7 +287,7 @@ export function EnterBills({ winId, props }: WinProps) {
     if (f.amountDue !== null && f.amountDue !== sum) {
       setError(
         `The Amount Due (${formatMoney(f.amountDue)}) is not the total of the expense and item lines (${formatMoney(sum)}). ` +
-          'Correct the lines, or click Recalculate (Alt+A) to make the Amount Due the total of the lines.',
+          'Correct the lines, or click Recalculate (Alt+T) to make the Amount Due the total of the lines.',
       );
       return false;
     }
@@ -446,6 +446,8 @@ export function EnterBills({ winId, props }: WinProps) {
     save: () => void save('stay'),
     saveClose: () => void save('close'),
     saveNew: () => void save('new'),
+
+    keys2013: true,
     new: () => {
       if (busy.current) return;
       busy.current = true;
@@ -480,7 +482,7 @@ export function EnterBills({ winId, props }: WinProps) {
       KeyX: () => void go('next'),
       KeyM: () => showTab('expenses'),
       KeyI: () => showTab('items'),
-      KeyA: recalculate,
+      KeyT: recalculate,
     };
     const fn = act[e.code];
     if (!fn) return;
@@ -676,8 +678,8 @@ export function EnterBills({ winId, props }: WinProps) {
       <div className="sf-foot">
         <div className="sf-foot-left">
           <div className="inline-fields">
-            <button type="button" className="btn" disabled={dis} onClick={recalculate} title="Alt+A">
-              <Mnemonic label="Recalcul&ate" />
+            <button type="button" className="btn" disabled={dis} onClick={recalculate} title="Alt+T">
+              <Mnemonic label="Recalcula&te" />
             </button>
           </div>
         </div>
@@ -705,11 +707,11 @@ export function EnterBills({ winId, props }: WinProps) {
 
       <div className="button-row">
         <span className="spacer" />
-        <button type="button" className="btn default" disabled={dis} onClick={() => void save('close')} title="Alt+S">
-          <Mnemonic label="&Save && Close" />
+        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
+          <Mnemonic label="S&ave && Close" />
         </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('new')} title="Alt+N">
-          <Mnemonic label="Save && &New" />
+        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
+          <Mnemonic label="&Save && New" />
         </button>
         <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
           {txnId === null ? 'Clear' : 'Revert'}

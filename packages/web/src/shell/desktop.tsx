@@ -34,8 +34,13 @@ export interface Commands {
   quickReport?: () => void;
   /** Return (or resolve to) false to keep the window open. */
   confirmClose?: () => boolean | Promise<boolean>;
+  /**
+   * A QuickBooks 2013 transaction form: Alt+S is Save & New (the blue button) and Alt+A is
+   * Save & Close. Otherwise Alt+S is Save & Close / OK and Alt+N is Save & New / Next.
+   */
+  keys2013?: boolean;
 }
-export type CommandName = Exclude<keyof Commands, 'confirmClose'>;
+export type CommandName = Exclude<keyof Commands, 'confirmClose' | 'keys2013'>;
 
 export const ZOOM_LEVELS = [100, 115, 130, 150, 175, 200];
 const ZOOM_KEY = 'rapidbooks.zoom';

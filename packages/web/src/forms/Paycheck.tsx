@@ -539,6 +539,8 @@ export function Paycheck({ winId, props }: WinProps) {
     save: () => void save('stay'),
     saveClose: () => void save('close'),
     saveNew: () => void save('new'),
+
+    keys2013: true,
     new: () => {
       if (busy.current) return;
       busy.current = true;
@@ -719,11 +721,11 @@ export function Paycheck({ winId, props }: WinProps) {
 
       <div className="button-row">
         <span className="spacer" />
-        <button type="button" className="btn default" disabled={dis} onClick={() => void save('close')} title="Alt+S">
-          <Mnemonic label="&Save && Close" />
+        <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
+          <Mnemonic label="S&ave && Close" />
         </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('new')} title="Alt+N">
-          <Mnemonic label="Save && &New" />
+        <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
+          <Mnemonic label="&Save && New" />
         </button>
         <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
           {txnId === null ? 'Clear' : 'Revert'}

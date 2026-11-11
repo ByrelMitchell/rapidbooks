@@ -20,6 +20,7 @@ import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { autoApply, payable, toggleRow, totalApplied, type ApplyRow } from './paymentApply';
 import { adjacentTxn, PayMethodField } from './receivablesShared';
+import { Ribbon, RibbonBig, RibbonFind, RibbonGroup } from './Ribbon';
 import './receivables.css';
 
 interface Row extends ApplyRow {
@@ -436,6 +437,8 @@ export function ReceivePayments({ winId, props }: WinProps) {
     save: () => void save('stay'),
     saveClose: () => void save('close'),
     saveNew: () => void save('new'),
+
+    keys2013: true,
     new: () => void confirmLeave().then((ok) => ok && startNew()),
     delete: txnId !== null ? () => void remove() : undefined,
     history,
@@ -472,201 +475,240 @@ export function ReceivePayments({ winId, props }: WinProps) {
   const origTotal = form.rows.reduce((t, r) => t + r.total, 0);
   const unused = (form.amount ?? 0) - applied;
   const showJob = form.rows.some((r) => r.fullName !== customer?.full_name);
+  const cols = showJob ? 8 : 7;
+  const noRows = loading || form.rows.length === 0;
+
+  const mainTab = (
+    <>
+      <RibbonGroup>
+        <RibbonFind disabled={loading} onPrev={() => void go('prev')} onNext={() => void go('next')} onFind={() => desk.open('find')} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="new" label="New" keys="Ctrl+N" disabled={loading} onClick={() => desk.run('new')} />
+        <RibbonBig icon="delete" label="Delete" keys="Ctrl+D" disabled={loading || txnId === null} onClick={() => void remove()} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="lookup" label={'Look up\nCustomer/Invoice'} keys="Ctrl+F" onClick={() => desk.open('find')} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig
+          icon="autoapply"
+          label={applied > 0 ? 'Un-Apply\nPayment' : 'Auto Apply\nPayment'}
+          disabled={noRows}
+          onClick={applyOrClear}
+        />
+        <RibbonBig icon="discount" label={'Discounts And\nCredits'} disabled={noRows} onClick={() => void openDiscount()} />
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig icon="history" label={'Transaction\nHistory'} keys="Ctrl+H" disabled={loading || txnId === null} onClick={history} />
+    </RibbonGroup>
+  );
 
   return (
-    <div className="form-window rcv" ref={rootRef}>
-      <div className="rcv-head">
-        <label htmlFor={`${winId}-cust`}>Received From</label>
-        <Combo
-          id={`${winId}-cust`}
-          className="rcv-wide"
-          options={customerOptions}
-          value={form.customerId}
-          onChange={setCustomer}
-          data-field="customer"
-          disabled={loading || deposited}
-          {...nameQuickFill(desk, 'customer')}
-        />
-        <span className="rcv-label">Customer Balance</span>
-        <span className="readout">{customer ? formatMoney(customer.balance) : ''}</span>
-        <label htmlFor={`${winId}-date`}>Date</label>
-        <DateField
-          id={`${winId}-date`}
-          value={form.date}
-          onChange={(date) => edit((f) => ({ ...f, date }))}
-          disabled={loading}
-        />
-        <label htmlFor={`${winId}-amt`}>Amount</label>
-        <AmountField
-          id={`${winId}-amt`}
-          className="rcv-amount"
-          value={form.amount}
-          onChange={setAmount}
-          disabled={loading || deposited}
-        />
-        <label htmlFor={`${winId}-meth`}>Pmt. Method</label>
-        <PayMethodField
-          id={`${winId}-meth`}
-          value={form.method}
-          onChange={(method) => edit((f) => ({ ...f, method }))}
-          disabled={loading}
-        />
-        <label htmlFor={`${winId}-ref`}>Check No.</label>
-        <input
-          id={`${winId}-ref`}
-          className="field num-field"
-          value={form.refNo}
-          maxLength={20}
-          disabled={loading}
-          onChange={(e) => {
-            const refNo = e.target.value;
-            edit((f) => ({ ...f, refNo }));
-          }}
-          onFocus={(e) => e.target.select()}
-        />
-        <label htmlFor={`${winId}-memo`}>Memo</label>
-        <input
-          id={`${winId}-memo`}
-          className="field"
-          value={form.memo}
-          disabled={loading}
-          onChange={(e) => {
-            const memo = e.target.value;
-            edit((f) => ({ ...f, memo }));
-          }}
-        />
-        <label htmlFor={`${winId}-dep`}>Deposit To</label>
-        <Combo
-          id={`${winId}-dep`}
-          options={depositOptions}
-          value={form.depositTo}
-          onChange={(depositTo) => edit((f) => ({ ...f, depositTo }))}
-          disabled={loading || deposited}
-        />
-      </div>
-      {deposited && (
-        <div className="msg-strip">
-          This payment has been deposited. Its customer, amount and deposit account cannot be changed until it is removed
-          from the deposit.
+    <div className="f13 rcv" ref={rootRef}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
+      />
+      <div className="f13-page">
+        <h2 className="f13-title bold">Customer Payment</h2>
+        <div className="rp13-head">
+          <label className="cap-left" htmlFor={`${winId}-cust`}>
+            Received From
+          </label>
+          <Combo
+            id={`${winId}-cust`}
+            options={customerOptions}
+            value={form.customerId}
+            onChange={setCustomer}
+            data-field="customer"
+            disabled={loading || deposited}
+            {...nameQuickFill(desk, 'customer')}
+          />
+          <span className="cap-left">Customer Balance</span>
+          <span className="readout13">{customer ? formatMoney(customer.balance) : '0.00'}</span>
+          <label className="cap-left" htmlFor={`${winId}-amt`}>
+            Amount
+          </label>
+          <AmountField
+            id={`${winId}-amt`}
+            className="rcv-amount"
+            value={form.amount}
+            onChange={setAmount}
+            disabled={loading || deposited}
+          />
+          <label className="cap-left" htmlFor={`${winId}-date`}>
+            Date
+          </label>
+          <DateField id={`${winId}-date`} value={form.date} onChange={(date) => edit((f) => ({ ...f, date }))} disabled={loading} />
+          <label className="cap-left" htmlFor={`${winId}-meth`}>
+            Pmt. Method
+          </label>
+          <PayMethodField
+            id={`${winId}-meth`}
+            value={form.method}
+            onChange={(method) => edit((f) => ({ ...f, method }))}
+            disabled={loading}
+          />
+          <label className="cap-left" htmlFor={`${winId}-ref`}>
+            Check #
+          </label>
+          <input
+            id={`${winId}-ref`}
+            className="field"
+            value={form.refNo}
+            maxLength={20}
+            disabled={loading}
+            onChange={(e) => {
+              const refNo = e.target.value;
+              edit((f) => ({ ...f, refNo }));
+            }}
+            onFocus={(e) => e.target.select()}
+          />
         </div>
-      )}
-      {error && <div className="msg-strip error">{error}</div>}
-      <div className="grid-wrap rcv-grid">
-        <table className="line-grid">
-          <colgroup>
-            <col style={{ width: '2rem' }} />
-            <col style={{ width: '7rem' }} />
-            <col style={{ width: showJob ? '6rem' : '9rem' }} />
-            {showJob && <col style={{ width: '10rem' }} />}
-            <col />
-            <col />
-            <col style={{ width: '6rem' }} />
-            <col />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="al-center">✓</th>
-              <th>Date</th>
-              <th>Number</th>
-              {showJob && <th>Job</th>}
-              <th className="al-right">Orig. Amt.</th>
-              <th className="al-right">Amt. Due</th>
-              <th className="al-right">Disc.</th>
-              <th className="al-right">Payment</th>
-            </tr>
-          </thead>
-          <tbody onKeyDown={onGridKey}>
-            {form.rows.map((r, i) => (
-              <tr key={r.id} onFocus={() => (curRow.current = i)}>
-                <td className="al-center rcv-check" onClick={() => !loading && toggle(i)}>
-                  {r.payment > 0 ? '✓' : ''}
-                </td>
-                <td className="cell-text">{formatUsDate(r.date)}</td>
-                <td className="cell-text">{r.num}</td>
-                {showJob && <td className="cell-text">{r.fullName}</td>}
-                <td className="cell-text al-right">{formatMoney(r.total)}</td>
-                <td className="cell-text al-right">{formatMoney(r.due)}</td>
-                <td className="cell-text al-right">{r.discount ? formatMoney(r.discount) : ''}</td>
-                <td>
-                  <AmountField
-                    value={r.payment || null}
-                    onChange={(v) => setPayment(i, v)}
-                    data-row={i}
-                    data-col="pay"
-                    aria-label={`Payment on invoice ${r.num}`}
-                    disabled={loading}
-                  />
-                </td>
-              </tr>
-            ))}
-            {form.rows.length === 0 && (
-              <tr>
-                <td colSpan={showJob ? 8 : 7} className="cell-text grey">
-                  {form.customerId === null ? 'Choose a customer to see the open invoices.' : 'This customer has no open invoices.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={showJob ? 4 : 3} className="al-right total-label">
-                Totals
-              </td>
-              <td className="al-right total">{formatMoney(origTotal)}</td>
-              <td className="al-right total">{formatMoney(amountDue)}</td>
-              <td className="al-right total">{discounts ? formatMoney(discounts) : ''}</td>
-              <td className="al-right total">{formatMoney(applied)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <div className="rcv-lower">
-        <div className="rcv-buttons">
-          <button type="button" className="btn" disabled={loading || form.rows.length === 0} onClick={() => void openDiscount()}>
-            Discount Info...
-          </button>
-          <button type="button" className="btn" disabled={loading || form.rows.length === 0} onClick={applyOrClear}>
-            {applied > 0 ? 'Clear Payments' : 'Auto Apply'}
-          </button>
-          <span className="hint">Space ticks the invoice you are on.</span>
-        </div>
-        <div className="rcv-sums">
-          <span>Amounts Due</span>
-          <span className="readout">{formatMoney(amountDue)}</span>
-          <span>Applied</span>
-          <span className="readout">{formatMoney(applied)}</span>
-          <span>Discount</span>
-          <span className="readout">{formatMoney(discounts)}</span>
-          <span>{unused < 0 ? 'Over-applied' : 'Unused Payment'}</span>
-          <span className={`readout${unused < 0 ? ' error-text' : ''}`}>{formatMoney(Math.abs(unused))}</span>
-        </div>
-      </div>
-      <div className="button-row">
-        <button type="button" className="btn" disabled={loading} onClick={() => void go('prev')}>
-          Previous
-        </button>
-        <button type="button" className="btn" disabled={loading || txnId === null} onClick={() => void go('next')}>
-          Next
-        </button>
-        <button type="button" className="btn" disabled={loading} onClick={history} title="Ctrl+H">
-          History
-        </button>
-        <span className="spacer" />
-        <button type="button" className="btn default" disabled={loading} onClick={() => void save('close')}>
-          <Mnemonic label="&Save && Close" />
-        </button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void save('new')}>
-          <Mnemonic label="Save && &New" />
-        </button>
-        {txnId === null ? (
-          <button type="button" className="btn" disabled={loading} onClick={clear}>
-            Clear
-          </button>
-        ) : (
-          <button type="button" className="btn" disabled={loading} onClick={() => void remove()} title="Ctrl+D">
-            Delete
-          </button>
+        {deposited && (
+          <div className="msg-strip">
+            This payment has been deposited. Its customer, amount and deposit account cannot be changed until it is removed
+            from the deposit.
+          </div>
         )}
+        {error && <div className="msg-strip error">{error}</div>}
+        <div className="grid-wrap rp13-grid">
+          <table className="line-grid">
+            <colgroup>
+              <col style={{ width: '2rem' }} />
+              <col style={{ width: '7rem' }} />
+              <col style={{ width: showJob ? '6rem' : '9rem' }} />
+              {showJob && <col style={{ width: '10rem' }} />}
+              <col />
+              <col />
+              <col style={{ width: '6rem' }} />
+              <col />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="al-center">✓</th>
+                <th>Date</th>
+                <th>Number</th>
+                {showJob && <th>Job</th>}
+                <th className="al-right">Orig. Amt.</th>
+                <th className="al-right">Amt. Due</th>
+                <th className="al-right">Disc.</th>
+                <th className="al-right">Payment</th>
+              </tr>
+            </thead>
+            <tbody onKeyDown={onGridKey}>
+              {form.rows.map((r, i) => (
+                <tr key={r.id} onFocus={() => (curRow.current = i)}>
+                  <td className="al-center rcv-check" onClick={() => !loading && toggle(i)}>
+                    {r.payment > 0 ? '✓' : ''}
+                  </td>
+                  <td className="cell-text">{formatUsDate(r.date)}</td>
+                  <td className="cell-text">{r.num}</td>
+                  {showJob && <td className="cell-text">{r.fullName}</td>}
+                  <td className="cell-text al-right">{formatMoney(r.total)}</td>
+                  <td className="cell-text al-right">{formatMoney(r.due)}</td>
+                  <td className="cell-text al-right">{r.discount ? formatMoney(r.discount) : ''}</td>
+                  <td>
+                    <AmountField
+                      value={r.payment || null}
+                      onChange={(v) => setPayment(i, v)}
+                      data-row={i}
+                      data-col="pay"
+                      aria-label={`Payment on invoice ${r.num}`}
+                      disabled={loading}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {form.rows.length === 0 && (
+                <tr className="rp13-empty">
+                  <td colSpan={cols}>
+                    {form.customerId === null
+                      ? 'Select the customer or job in the Received From field'
+                      : 'This customer has no open invoices'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={showJob ? 4 : 3} className="al-right">
+                  Totals
+                </td>
+                <td className="al-right">{formatMoney(origTotal)}</td>
+                <td className="al-right">{formatMoney(amountDue)}</td>
+                <td className="al-right">{discounts ? formatMoney(discounts) : ''}</td>
+                <td className="al-right">{formatMoney(applied)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="rp13-lower">
+          <div className="rp13-left">
+            <span className="hint">Space ticks the invoice you are on.</span>
+            <label className="rp13-deposit">
+              <span className="cap-left">Deposit To</span>
+              <Combo
+                options={depositOptions}
+                value={form.depositTo}
+                onChange={(depositTo) => edit((f) => ({ ...f, depositTo }))}
+                disabled={loading || deposited}
+              />
+            </label>
+            <label className="rp13-memo">
+              <span className="cap-left">Memo</span>
+              <input
+                className="field"
+                value={form.memo}
+                disabled={loading}
+                onChange={(e) => {
+                  const memo = e.target.value;
+                  edit((f) => ({ ...f, memo }));
+                }}
+              />
+            </label>
+          </div>
+          <div className="rp13-sums">
+            <h4>Amounts for Selected Invoices</h4>
+            <dl>
+              <dt>Amount Due</dt>
+              <dd>{formatMoney(amountDue)}</dd>
+              <dt>Applied</dt>
+              <dd>{formatMoney(applied)}</dd>
+              <dt>Discount and Credits Applied</dt>
+              <dd>{formatMoney(discounts)}</dd>
+              {unused !== 0 && (
+                <>
+                  <dt className={unused < 0 ? 'error-text' : undefined}>{unused < 0 ? 'Over-applied' : 'Unused Payment'}</dt>
+                  <dd className={unused < 0 ? 'error-text' : undefined}>{formatMoney(Math.abs(unused))}</dd>
+                </>
+              )}
+            </dl>
+          </div>
+        </div>
+        <div className="f13-buttons">
+          <button type="button" className="btn" disabled={loading} onClick={() => void save('close')} title="Alt+A">
+            <Mnemonic label="S&ave && Close" />
+          </button>
+          <button type="button" className="btn primary" disabled={loading} onClick={() => void save('new')} title="Alt+S">
+            <Mnemonic label="&Save && New" />
+          </button>
+          {txnId === null ? (
+            <button type="button" className="btn" disabled={loading} onClick={clear}>
+              Clear
+            </button>
+          ) : (
+            <button type="button" className="btn" disabled={loading} onClick={() => void remove()} title="Ctrl+D">
+              Delete
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

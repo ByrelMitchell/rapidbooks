@@ -6,7 +6,8 @@ import { MenuBar, type MenuBarHandle } from './shell/MenuBar';
 import { DesktopProvider, useDesktop } from './shell/desktop';
 import { registry } from './shell/registry';
 import { useGlobalShortcuts } from './shell/shortcuts';
-import { IconBar } from './shell/IconBar';
+import { useData } from './api';
+import { IconBar, LeftIconBar } from './shell/IconBar';
 import { useViewPrefs } from './shell/viewPrefs';
 import { WindowFrame } from './shell/WindowFrame';
 import './shell/shell.css';
@@ -25,7 +26,7 @@ function Shell() {
   const prefs = useViewPrefs();
   useGlobalShortcuts(desk, menuRef);
 
-  // QuickBooks opens on the Company Navigator: at start-up, and again after File > Log Off
+  // QuickBooks opens on the Home page: at start-up, and again after File > Log Off
   // and a new login (when every window was closed). desk.open never opens a second copy.
   const { needLogin } = useSession();
   useEffect(() => {
@@ -43,10 +44,21 @@ function Shell() {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  // QuickBooks 2013's title bar: "Company - QuickBooks Pro 2013 - [Create Invoices]".
+  const { data: company } = useData<Record<string, string>>(needLogin ? null : '/api/company');
+  const activeTitle = desk.windows.find((w) => w.id === desk.activeId)?.title;
+  const appTitle = [company?.name, 'RapidBooks'].filter(Boolean).join(' - ') + (activeTitle ? ` - [${activeTitle}]` : '');
+  useEffect(() => {
+    document.title = appTitle;
+  }, [appTitle]);
+
   return (
     <div className={`app${prefs.largeLists ? ' large-lists' : ''}`}>
+      <div className="apptitle">{appTitle}</div>
       <MenuBar ref={menuRef} />
-      {prefs.iconBar && <IconBar />}
+      {prefs.iconBar && !prefs.leftIconBar && <IconBar />}
+      <div className="app-main">
+      {prefs.iconBar && prefs.leftIconBar && <LeftIconBar />}
       <div className="desktop">
         {desk.windows.map((w) => {
           const def = registry[w.kind];
@@ -62,11 +74,12 @@ function Shell() {
           <div className="desktop-hint">
             RapidBooks
             <small>
-              Press Alt to use the menus: Alt+L for Lists, Alt+C for Company, Alt+B for Banking. Company &gt; Navigator (Alt+C, N)
+              Press Alt to use the menus: Alt+L for Lists, Alt+C for Company, Alt+B for Banking. Company &gt; Home Page (Alt+C, H)
               shows the day&apos;s work; Help &gt; Keyboard Shortcuts lists every key.
             </small>
           </div>
         )}
+      </div>
       </div>
       <div className="statusbar" role="status">
         <span className="status-msg">{desk.status}</span>

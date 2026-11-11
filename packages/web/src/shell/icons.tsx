@@ -29,7 +29,8 @@ export type IconName =
   | 'pl'
   | 'trip'
   | 'salescust'
-  | 'aging';
+  | 'aging'
+  | 'home';
 
 const INK = '#404040';
 const PAPER = '#ffffff';
@@ -229,6 +230,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <circle cx={16} cy={16} r={12} fill={PAPER} stroke={INK} strokeWidth={1.5} />
       <path d="M16 8v8l6 4" fill="none" stroke={NAVY} strokeWidth={2} />
       <path d="M16 4v2M28 16h-2M16 28v-2M4 16h2" stroke={INK} />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M4 16L16 5l12 11" fill="none" stroke={INK} strokeWidth={2} />
+      <path d="M8 14v14h16V14L16 7z" fill={PAPER} stroke={INK} />
+      <path d="M14 28v-8h5v8" fill="#6c98e0" stroke={INK} />
     </>
   ),
 };

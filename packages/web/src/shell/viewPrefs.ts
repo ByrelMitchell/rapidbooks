@@ -1,20 +1,27 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * View menu choices remembered per browser: the icon bar (View > Icon Bar) and the
- * larger font for lists and registers (View > Large List Font). Storage may be blocked
- * (private window, policy): then the choices just are not remembered.
+ * View menu choices remembered per browser: the icon bar (View > Top Icon Bar / Left Icon
+ * Bar / Hide Icon Bar), whether the left bar is open or folded to a strip, and the larger
+ * font for lists and registers (View > Large List Font). Storage may be blocked (private
+ * window, policy): then the choices just are not remembered.
  */
 export interface ViewPrefs {
   iconBar: boolean;
+  /** QuickBooks 2013 puts the icon bar down the left ("My Shortcuts"). */
+  leftIconBar: boolean;
+  /** The left bar shows its labels; folded, it is a narrow strip of icons. */
+  leftBarOpen: boolean;
   largeLists: boolean;
 }
 
 const KEYS: Record<keyof ViewPrefs, string> = {
   iconBar: 'rapidbooks.iconBar',
+  leftIconBar: 'rapidbooks.leftIconBar',
+  leftBarOpen: 'rapidbooks.leftBarOpen',
   largeLists: 'rapidbooks.largeListFont',
 };
-const DEFAULTS: ViewPrefs = { iconBar: true, largeLists: false };
+const DEFAULTS: ViewPrefs = { iconBar: true, leftIconBar: true, leftBarOpen: false, largeLists: false };
 
 function read(): ViewPrefs {
   const out = { ...DEFAULTS };

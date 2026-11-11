@@ -306,6 +306,8 @@ export function JournalEntry({ winId, props }: WinProps) {
     save: () => void save('stay'),
     saveClose: () => void save('close'),
     saveNew: () => void save('new'),
+
+    keys2013: true,
     insertLine,
     deleteLine,
     new: () => {
@@ -451,11 +453,11 @@ export function JournalEntry({ winId, props }: WinProps) {
         </table>
       </div>
       <div className="button-row right">
-        <button type="button" className="btn default" disabled={loading} onClick={() => void save('close')}>
-          <Mnemonic label="&Save && Close" />
+        <button type="button" className="btn" disabled={loading} onClick={() => void save('close')}>
+          <Mnemonic label="S&ave && Close" />
         </button>
-        <button type="button" className="btn" disabled={loading} onClick={() => void save('new')}>
-          <Mnemonic label="Save && &New" />
+        <button type="button" className="btn primary" disabled={loading} onClick={() => void save('new')}>
+          <Mnemonic label="&Save && New" />
         </button>
         {txnId === null ? (
           <button type="button" className="btn" disabled={loading} onClick={clear}>

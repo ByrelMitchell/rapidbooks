@@ -1,6 +1,6 @@
 # RapidBooks
 
-A bookkeeping web app that looks and works like QuickBooks Pro circa 2003, built to run on a Linux box on the LAN. It covers invoices, credit memos, statements, finance charges, payments, deposits, purchase orders, bills, checks, transfers, manual paychecks, lists, reports and graphs.
+A bookkeeping web app that looks and works like QuickBooks Pro 2013, built to run on a Linux box on the LAN. It covers invoices, credit memos, statements, finance charges, payments, deposits, purchase orders, bills, checks, transfers, manual paychecks, lists, reports and graphs.
 
 ## Development
 

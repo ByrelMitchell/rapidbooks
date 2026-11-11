@@ -14,7 +14,7 @@ Decisions already made:
 
 ## Scope answers
 
-- **Version**: an older QuickBooks Pro on Windows XP, probably around 2003 (no left icon bar). Build the classic look: top menu bar, icon bar, Navigator. Pressing **F2** in QuickBooks will confirm the exact version; screenshots come later for refinement.
+- **Version**: QuickBooks Pro 2013 (confirmed). Build its look: dark title bars, left icon bar ("My Shortcuts"), Home page, transaction ribbons with the dark Customer:Job band, blue Save & New (Alt+S) and Save & Close (Alt+A). Screenshots of her screens are in `screenshots/`.
 - **Trip reports**: today an Awk script over invoices. RapidBooks builds it in: one trip per customer per invoice date, excluding customers flagged as "picks up" (a checkbox on the customer record). Shows date, customer, invoices in the trip, with trip counts per customer and per period.
 - **Inventory**: not tracked. Items are service, non-inventory part, other charge, subtotal, discount and group only.
 - **Sales tax**: none (B2B machine shop). No tax items, codes or tax columns on forms.

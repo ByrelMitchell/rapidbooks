@@ -131,8 +131,9 @@ const GROUPS: Group[] = [
   {
     title: 'Moving around a form',
     rows: [
-      [k('Alt', 'S'), 'Save & Close (Pay & Close in Pay Bills, Send Now in e-mail windows, OK in dialogs).'],
-      [k('Alt', 'N'), 'Save & New (Pay & New in Pay Bills, Next in a list entry such as New Customer).'],
+      [k('Alt', 'S'), 'Transaction forms (invoices, payments, bills, checks...): Save & New, the blue button. Elsewhere: Pay & Close in Pay Bills, Send Now in e-mail windows, OK in dialogs.'],
+      [k('Alt', 'A'), 'Transaction forms: Save & Close.'],
+      [k('Alt', 'N'), 'Save & New too (Pay & New in Pay Bills, Next in a list entry such as New Customer).'],
       [k('Alt', 'P'), 'Previous transaction of the same kind.'],
       [k('Alt', 'X'), 'Next transaction of the same kind.'],
       [k('Enter'), 'In a list entry (New Customer, New Item...) and in Company Information: OK.'],
@@ -141,18 +142,25 @@ const GROUPS: Group[] = [
       {
         title: 'Create Invoices',
         rows: [
+          [k('Alt', 'J'), 'Go to the Customer:Job field.'],
           [k('Alt', 'D'), 'Send by e-mail.'],
           [k('Alt', 'T'), 'Apply Credits (a saved invoice).'],
           [k('Alt', 'M'), 'Receive Payments for this customer (a saved invoice).'],
         ],
       },
-      { title: 'Create Credit Memos/Refunds', rows: [[k('Alt', 'D'), 'Send by e-mail.']] },
+      {
+        title: 'Create Credit Memos/Refunds',
+        rows: [
+          [k('Alt', 'J'), 'Go to the Customer:Job field.'],
+          [k('Alt', 'D'), 'Send by e-mail.'],
+        ],
+      },
       {
         title: 'Enter Bills',
         rows: [
           [k('Alt', 'M'), 'Expenses tab.'],
           [k('Alt', 'I'), 'Items tab.'],
-          [k('Alt', 'A'), 'Recalculate the amount due from the lines.'],
+          [k('Alt', 'T'), 'Recalculate the amount due from the lines.'],
         ],
       },
       {
@@ -198,7 +206,7 @@ const GROUPS: Group[] = [
         <>
           {alt('←', '→', '↑', '↓')}, {alt('Home', 'End')}, <kbd>Enter</kbd>
         </>,
-        'Company Navigator: move between the pictures, open one.',
+        'Home page: move between the pictures, open one.',
       ],
     ],
   },

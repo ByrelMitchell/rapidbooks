@@ -36,8 +36,8 @@ const CAPTIONS: Partial<Record<ActivityId, string>> = {
 function Arrow() {
   return (
     <svg className="nav-arrow" viewBox="0 0 24 12" aria-hidden="true" focusable="false">
-      <path d="M1 6h17" stroke="#0a246a" strokeWidth={2} />
-      <path d="M16 1l7 5-7 5z" fill="#0a246a" />
+      <path d="M1 6h17" stroke="#3c6cc4" strokeWidth={2} />
+      <path d="M16 1l7 5-7 5z" fill="#3c6cc4" />
     </svg>
   );
 }

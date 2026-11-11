@@ -156,8 +156,14 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         }
         if (!/^Key[A-Z]$/.test(code)) return;
         e.preventDefault();
-        if (code === 'KeyS' && d.run('saveClose')) return;
-        if (code === 'KeyN' && d.run('saveNew')) return;
+        if (d.commands(d.activeId).keys2013) {
+          // QuickBooks 2013 forms: S&ave & Close, &Save & New (Alt+N still saves and opens a new one).
+          if (code === 'KeyA' && d.run('saveClose')) return;
+          if ((code === 'KeyS' || code === 'KeyN') && d.run('saveNew')) return;
+        } else {
+          if (code === 'KeyS' && d.run('saveClose')) return;
+          if (code === 'KeyN' && d.run('saveNew')) return;
+        }
         menuRef.current?.openByLetter(code.slice(3));
         return;
       }

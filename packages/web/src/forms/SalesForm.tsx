@@ -34,6 +34,7 @@ import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { handOffLocked, openWindow } from './openTxn';
 import { docLabel, openPdf } from './salesDoc';
+import { Ribbon, RibbonBig, RibbonCheck, RibbonFind, RibbonGroup, RibbonSmall, RibbonStack } from './Ribbon';
 import './sales.css';
 
 type DocType = 'INVOICE' | 'CREDITMEMO';
@@ -507,6 +508,36 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
     openWindow(desk, 'payment', cust !== null ? { id: null, customerId: cust } : { id: null }, 'Receive Payments');
   };
 
+  /** Ribbon > Refund/Credit: a new credit memo for this customer. */
+  const refundCredit = () => {
+    const cust = formRef.current.customerId ?? docRef.current?.name_id ?? null;
+    openWindow(desk, 'creditmemo', cust !== null ? { id: null, customerId: cust } : { id: null }, 'Create Credit Memos/Refunds');
+  };
+
+  /** Ribbon > Create a Copy: the same customer and lines as a new, unsaved document with the next number. */
+  const copyDoc = async () => {
+    if (busy.current || loading) return;
+    busy.current = true;
+    try {
+      if (!(await askSave())) return;
+      const src = formRef.current;
+      setTxnId(null);
+      setDoc(null);
+      version.current = undefined;
+      setError(null);
+      setNote(null);
+      setForm({ ...src, num: '' });
+      snapshot.current = serialize(newForm()); // the copy is unsaved
+      const { num } = await api.get<{ num: string }>(`/api/txns/next-num?type=${type}`);
+      if (txnIdRef.current === null && formRef.current.num === '') setForm((cur) => ({ ...cur, num }));
+      desk.setStatus(`This is a copy. Save it to record a new ${text.noun}.`);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      busy.current = false;
+    }
+  };
+
   const openArRegister = () => {
     const ar = docRef.current?.ar_account_id ?? accounts?.find((a) => a.type === 'AR' && a.system_role === 'AR')?.id ?? accounts?.find((a) => a.type === 'AR')?.id;
     if (ar !== undefined) desk.open('register', { accountId: ar });
@@ -517,6 +548,8 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
     save: () => void save('stay'),
     saveClose: () => void save('close'),
     saveNew: () => void save('new'),
+
+    keys2013: true,
     new: () => {
       if (busy.current) return;
       busy.current = true;
@@ -551,6 +584,7 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
       KeyP: () => void go('prev'),
       KeyX: () => void go('next'),
       KeyD: () => void send(),
+      KeyJ: focusCustomer,
       KeyT: isInvoice && txnId !== null ? applyCredits : undefined,
       KeyM: isInvoice && txnId !== null ? receivePayments : undefined,
     };
@@ -574,190 +608,227 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
   const applied = doc ? (isInvoice ? doc.total - (doc.open_balance ?? doc.total) : doc.total - (doc.unapplied ?? doc.total)) : 0;
   const dis = loading;
 
+  const customerId = form.customerId ?? doc?.name_id ?? null;
+  const mainTab = (
+    <>
+      <RibbonGroup>
+        <RibbonFind disabled={dis} onPrev={() => void go('prev')} onNext={() => void go('next')} onFind={() => desk.open('find')} />
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="new" label="New" keys="Ctrl+N" disabled={dis} onClick={() => desk.run('new')} />
+        <RibbonBig icon="save" label="Save" keys="Ctrl+Enter" disabled={dis} onClick={() => void save('stay')} />
+        <RibbonBig icon="delete" label="Delete" keys="Ctrl+D" disabled={dis || txnId === null} onClick={() => void remove()} />
+        <RibbonStack>
+          <RibbonSmall icon="copy" label="Create a Copy" disabled={dis} onClick={() => void copyDoc()} />
+        </RibbonStack>
+      </RibbonGroup>
+      <RibbonGroup>
+        <RibbonBig icon="print" label="Print" keys="Ctrl+P" disabled={dis} onClick={() => void print()} />
+        <RibbonBig icon="email" label="Email" keys="Alt+D" disabled={dis} onClick={() => void send()} />
+        <RibbonStack>
+          <RibbonCheck label="Print Later" checked={form.toPrint} disabled={dis} onChange={(toPrint) => set({ toPrint })} />
+          <RibbonCheck label="Email Later" checked={form.toEmail} disabled={dis} onChange={(toEmail) => set({ toEmail })} />
+        </RibbonStack>
+      </RibbonGroup>
+      {isInvoice && (
+        <RibbonGroup>
+          <RibbonStack>
+            <RibbonSmall icon="credits" label="Apply Credits" keys="Alt+T" disabled={dis || txnId === null} onClick={applyCredits} />
+          </RibbonStack>
+          <RibbonBig icon="payments" label={'Receive\nPayments'} keys="Alt+M" disabled={dis || customerId === null} onClick={receivePayments} />
+          <RibbonStack>
+            <RibbonSmall icon="refund" label="Refund/Credit" disabled={dis || customerId === null} onClick={refundCredit} />
+          </RibbonStack>
+        </RibbonGroup>
+      )}
+    </>
+  );
+  const sendTab = (
+    <>
+      <RibbonGroup>
+        <RibbonBig icon="email" label="Email" keys="Alt+D" disabled={dis} onClick={() => void send()} />
+        <RibbonBig icon="print" label="Print" keys="Ctrl+P" disabled={dis} onClick={() => void print()} />
+        <RibbonStack>
+          <RibbonCheck label="Print Later" checked={form.toPrint} disabled={dis} onChange={(toPrint) => set({ toPrint })} />
+          <RibbonCheck label="Email Later" checked={form.toEmail} disabled={dis} onChange={(toEmail) => set({ toEmail })} />
+        </RibbonStack>
+      </RibbonGroup>
+    </>
+  );
+  const reportsTab = (
+    <RibbonGroup>
+      <RibbonBig icon="history" label={'Transaction\nHistory'} keys="Ctrl+H" disabled={dis || txnId === null} onClick={history} />
+      <RibbonBig icon="journal" label={'Transaction\nJournal'} keys="Ctrl+Y" disabled={dis || txnId === null} onClick={journal} />
+      <RibbonBig
+        icon="report"
+        label={'Customer\nQuickReport'}
+        keys="Ctrl+Q"
+        disabled={dis || customerId === null}
+        onClick={() => customerId !== null && openQuickReport(desk, { name_id: customerId })}
+      />
+    </RibbonGroup>
+  );
+
   return (
-    <div className="form-window sales-form" onKeyDown={onKeyDown}>
-      <div className="form-toolbar">
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('prev')} title="Alt+P">
-          <Mnemonic label="&Previous" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void go('next')} title="Alt+X">
-          <Mnemonic label="Ne&xt" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void print()} title="Ctrl+P">
-          Print
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis} onClick={() => void send()} title="Alt+D">
-          <Mnemonic label="Sen&d" />
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={history} title="Ctrl+H">
-          History
-        </button>
-        <button type="button" className="btn tool" tabIndex={-1} disabled={dis || txnId === null} onClick={journal} title="Ctrl+Y">
-          Journal
-        </button>
-        {doc?.is_finance_charge && <span className="fc-flag">Finance charge</span>}
-      </div>
+    <div className="f13 sales-form" onKeyDown={onKeyDown}>
+      <Ribbon
+        tabs={[
+          { label: 'Main', content: mainTab },
+          { label: 'Send/Ship', content: sendTab },
+          { label: 'Reports', content: reportsTab },
+        ]}
+      />
 
-      {error && <div className="msg-strip error">{error}</div>}
-      {note && <div className="msg-strip info">{note}</div>}
-
-      <div className="sf-head">
-        <div className="sf-cust" ref={customerRef}>
-          <label className="stack">
-            Customer:Job
-            <Combo
-              options={customerOptions}
-              value={form.customerId}
-              onChange={chooseCustomer}
-              disabled={dis}
-              {...nameQuickFill(desk, 'customer')}
-            />
-          </label>
-        </div>
-        <h2 className="sf-title">{isInvoice ? 'Invoice' : 'Credit Memo'}</h2>
-        <div className="sf-datenum">
-          <label className="stack">
-            Date
-            <DateField
-              value={form.date}
-              disabled={dis}
-              onChange={(date) =>
-                set(isInvoice ? { date, dueDate: dueDate(termsFor(formRef.current.termsId), date) } : { date })
-              }
-            />
-          </label>
-          <label className="stack">
-            {text.numLabel}
-            <input
-              className="field num-field"
-              value={form.num}
-              maxLength={20}
-              disabled={dis}
-              onChange={(e) => set({ num: e.target.value })}
-              onFocus={(e) => e.target.select()}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="sf-addrs">
-        <label className="stack">
-          {isInvoice ? 'Bill To' : 'Customer'}
-          <textarea className="field addr-box" rows={5} value={form.billAddr} disabled={dis} onChange={(e) => set({ billAddr: e.target.value })} />
+      <div className="f13-band" ref={customerRef}>
+        <label>
+          <Mnemonic label="Customer:&Job" />
+          <Combo
+            options={customerOptions}
+            value={form.customerId}
+            onChange={chooseCustomer}
+            disabled={dis}
+            aria-label="Customer:Job"
+            {...nameQuickFill(desk, 'customer')}
+          />
         </label>
-        {isInvoice && (
-          <label className="stack">
-            Ship To
-            <textarea className="field addr-box" rows={5} value={form.shipAddr} disabled={dis} onChange={(e) => set({ shipAddr: e.target.value })} />
-          </label>
-        )}
+        <span className="spacer" />
+        {doc?.is_finance_charge && <span className="band-flag">Finance charge</span>}
       </div>
 
-      <div className="sf-fields">
-        <label className="stack">
-          P.O. No.
-          <input className="field" value={form.po} disabled={dis} onChange={(e) => set({ po: e.target.value })} />
-        </label>
-        {isInvoice && (
-          <>
-            <label className="stack">
-              Terms
-              <Combo
-                options={termsOptions}
-                value={form.termsId}
+      <div className="f13-page">
+        {error && <div className="msg-strip error">{error}</div>}
+        {note && <div className="msg-strip info">{note}</div>}
+
+        <div className="sf13-top">
+          <h2 className="f13-title">{isInvoice ? 'Invoice' : 'Credit Memo'}</h2>
+          <div className="sf13-datenum">
+            <label className="cap">
+              <span className="cap-text">Date</span>
+              <DateField
+                value={form.date}
                 disabled={dis}
-                onChange={(termsId) => set({ termsId, dueDate: dueDate(termsFor(termsId), formRef.current.date) })}
-                {...termsQuickFill(desk)}
+                onChange={(date) =>
+                  set(isInvoice ? { date, dueDate: dueDate(termsFor(formRef.current.termsId), date) } : { date })
+                }
               />
             </label>
-            <label className="stack">
-              Due Date
-              <DateField value={form.dueDate} disabled={dis} onChange={(d) => set({ dueDate: d })} />
-            </label>
-            <label className="stack">
-              Ship
-              <DateField value={form.shipDate} allowEmpty disabled={dis} onChange={(d) => set({ shipDate: d })} />
-            </label>
-            <label className="stack">
-              Via
-              <input className="field" value={form.via} disabled={dis} onChange={(e) => set({ via: e.target.value })} />
-            </label>
-          </>
-        )}
-      </div>
-
-      <LineGrid ref={gridRef} lines={form.lines} setLines={setLines} items={items} accounts={accounts} minRows={MIN_ROWS} disabled={dis} />
-
-      <div className="sf-foot">
-        <div className="sf-foot-left">
-          <label className="stack">
-            Customer Message
-            <textarea className="field" rows={2} value={form.message} disabled={dis} onChange={(e) => set({ message: e.target.value })} />
-          </label>
-          <label className="inline-fields">
-            Memo
-            <input className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
-          </label>
-          <div className="inline-fields">
-            <label className="check">
-              <input type="checkbox" checked={form.toPrint} disabled={dis} onChange={(e) => set({ toPrint: e.target.checked })} />
-              To be printed
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={form.toEmail} disabled={dis} onChange={(e) => set({ toEmail: e.target.checked })} />
-              To be e-mailed
+            <label className="cap">
+              <span className="cap-text">{text.numLabel}</span>
+              <input
+                className="field num-field"
+                value={form.num}
+                maxLength={20}
+                disabled={dis}
+                onChange={(e) => set({ num: e.target.value })}
+                onFocus={(e) => e.target.select()}
+              />
             </label>
           </div>
+          <label className="cap sf13-addr">
+            <span className="cap-text">{isInvoice ? 'Bill To' : 'Customer'}</span>
+            <textarea className="field addr-box" value={form.billAddr} disabled={dis} onChange={(e) => set({ billAddr: e.target.value })} />
+          </label>
+          {isInvoice && (
+            <label className="cap sf13-addr">
+              <span className="cap-text">Ship To</span>
+              <textarea className="field addr-box" value={form.shipAddr} disabled={dis} onChange={(e) => set({ shipAddr: e.target.value })} />
+            </label>
+          )}
         </div>
-        <table className="sf-totals">
-          <tbody>
-            <tr>
-              <th>Total</th>
-              <td className="total">{formatMoney(total)}</td>
-            </tr>
-            {doc && isInvoice && (
-              <>
-                <tr>
-                  <th>Payments Applied</th>
-                  <td>{formatMoney(applied)}</td>
-                </tr>
-                <tr>
-                  <th>Balance Due</th>
-                  <td className="total">{formatMoney(total - applied)}</td>
-                </tr>
-              </>
-            )}
-            {doc && !isInvoice && (
-              <tr>
-                <th>Remaining Credit</th>
-                <td className="total">{formatMoney(total - applied)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
 
-      <div className="button-row">
-        {isInvoice && txnId !== null && (
-          <>
-            <button type="button" className="btn" disabled={dis} onClick={applyCredits} title="Alt+T">
-              <Mnemonic label="Apply Credi&ts..." />
-            </button>
-            <button type="button" className="btn" disabled={dis} onClick={receivePayments} title="Alt+M">
-              <Mnemonic label="Receive Pay&ments" />
-            </button>
-          </>
-        )}
-        <span className="spacer" />
-        <button type="button" className="btn default" disabled={dis} onClick={() => void save('close')} title="Alt+S">
-          <Mnemonic label="&Save && Close" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void save('new')} title="Alt+N">
-          <Mnemonic label="Save && &New" />
-        </button>
-        <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
-          {txnId === null ? 'Clear' : 'Revert'}
-        </button>
+        <div className="sf13-fields">
+          <label className="cap">
+            <span className="cap-text">P.O. No.</span>
+            <input className="field" value={form.po} disabled={dis} onChange={(e) => set({ po: e.target.value })} />
+          </label>
+          {isInvoice && (
+            <>
+              <label className="cap">
+                <span className="cap-text">Terms</span>
+                <Combo
+                  options={termsOptions}
+                  value={form.termsId}
+                  disabled={dis}
+                  onChange={(termsId) => set({ termsId, dueDate: dueDate(termsFor(termsId), formRef.current.date) })}
+                  {...termsQuickFill(desk)}
+                />
+              </label>
+              <label className="cap">
+                <span className="cap-text">Due Date</span>
+                <DateField value={form.dueDate} disabled={dis} onChange={(d) => set({ dueDate: d })} />
+              </label>
+              <label className="cap">
+                <span className="cap-text">Ship Date</span>
+                <DateField value={form.shipDate} allowEmpty disabled={dis} onChange={(d) => set({ shipDate: d })} />
+              </label>
+              <label className="cap">
+                <span className="cap-text">Ship Via</span>
+                <input className="field" value={form.via} disabled={dis} onChange={(e) => set({ via: e.target.value })} />
+              </label>
+            </>
+          )}
+        </div>
+
+        <LineGrid
+          ref={gridRef}
+          lines={form.lines}
+          setLines={setLines}
+          items={items}
+          accounts={accounts}
+          minRows={MIN_ROWS}
+          disabled={dis}
+          titles={isInvoice ? { qty: 'Quantity', rate: 'Price' } : undefined}
+        />
+
+        <div className="sf13-foot">
+          <div className="sf13-foot-left">
+            <label className="cap">
+              <span className="cap-text">Message</span>
+              <textarea className="field" rows={2} value={form.message} disabled={dis} onChange={(e) => set({ message: e.target.value })} />
+            </label>
+            <label className="memo-row">
+              <span className="cap-left">Memo</span>
+              <input className="field" value={form.memo} disabled={dis} onChange={(e) => set({ memo: e.target.value })} />
+            </label>
+          </div>
+          <table className="sf13-totals">
+            <tbody>
+              <tr>
+                <th className="plain">Total</th>
+                <td>{formatMoney(total)}</td>
+              </tr>
+              {isInvoice ? (
+                <>
+                  <tr>
+                    <th>Payments Applied</th>
+                    <td>{formatMoney(applied)}</td>
+                  </tr>
+                  <tr>
+                    <th>Balance Due</th>
+                    <td className="big">{formatMoney(total - applied)}</td>
+                  </tr>
+                </>
+              ) : (
+                <tr>
+                  <th>Remaining Credit</th>
+                  <td className="big">{formatMoney(total - applied)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="f13-buttons">
+          <button type="button" className="btn" disabled={dis} onClick={() => void save('close')} title="Alt+A">
+            <Mnemonic label="S&ave && Close" />
+          </button>
+          <button type="button" className="btn primary" disabled={dis} onClick={() => void save('new')} title="Alt+S">
+            <Mnemonic label="&Save && New" />
+          </button>
+          <button type="button" className="btn" disabled={dis} onClick={() => void clearOrRevert()}>
+            {txnId === null ? 'Clear' : 'Revert'}
+          </button>
+        </div>
       </div>
     </div>
   );

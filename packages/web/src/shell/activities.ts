@@ -15,6 +15,7 @@ export interface Activity {
 }
 
 export const ACTIVITIES = {
+  home: { label: 'Home', icon: 'home', keys: 'Alt+C, H', what: 'Home', run: (d) => d.open('navigator') },
   invoice: { label: 'Invoice', icon: 'invoice', keys: 'Ctrl+I', what: 'Create Invoices', run: (d) => d.open('invoice', { id: null }) },
   payment: {
     label: 'Rcv Pmt',

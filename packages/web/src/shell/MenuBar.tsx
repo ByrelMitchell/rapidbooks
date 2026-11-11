@@ -64,7 +64,23 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
         'sep',
         { label: '&Full Screen', action: () => void toggleFullScreen(desk.setStatus) },
         'sep',
-        { label: 'Icon &Bar', checked: prefs.iconBar, action: () => setViewPref('iconBar', !prefs.iconBar) },
+        {
+          label: '&Top Icon Bar',
+          checked: prefs.iconBar && !prefs.leftIconBar,
+          action: () => {
+            setViewPref('iconBar', true);
+            setViewPref('leftIconBar', false);
+          },
+        },
+        {
+          label: 'L&eft Icon Bar',
+          checked: prefs.iconBar && prefs.leftIconBar,
+          action: () => {
+            setViewPref('iconBar', true);
+            setViewPref('leftIconBar', true);
+          },
+        },
+        { label: '&Hide Icon Bar', checked: !prefs.iconBar, action: () => setViewPref('iconBar', false) },
         { label: '&Large List Font', checked: prefs.largeLists, action: () => setViewPref('largeLists', !prefs.largeLists) },
       ],
     },
@@ -83,9 +99,19 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
       ],
     },
     {
+      // QuickBooks 2013's Favorites menu (no underlined letter there either).
+      label: 'Favorites',
+      items: [
+        { label: 'Create &Invoices', shortcut: 'Ctrl+I', action: () => desk.open('invoice', { id: null }) },
+        { label: '&Receive Payments', action: () => desk.open('payment', { id: null }) },
+        { label: 'Make &Deposits', action: () => desk.open('deposit', { id: null }) },
+        { label: '&Write Checks', shortcut: 'Ctrl+W', action: () => desk.open('check', { id: null }) },
+      ],
+    },
+    {
       label: '&Company',
       items: [
-        { label: '&Navigator', action: () => desk.open('navigator') },
+        { label: '&Home Page', action: () => desk.open('navigator') },
         'sep',
         { label: 'Company &Information...', action: () => desk.open('company') },
         { label: 'Make General &Journal Entries...', action: () => desk.open('journal', { id: null }) },

@@ -65,7 +65,7 @@ export const registry: Registry = {
   // A transaction imported "as posted" from QuickBooks (or a QuickBooks type with no form): its splits.
   imported: { component: ImportedTxn, title: 'Imported Transaction', width: 66 },
   // Company > Navigator (opened at start-up) and Help > Keyboard Shortcuts
-  navigator: { component: Navigator, title: 'Company Navigator', width: 60 },
+  navigator: { component: Navigator, title: 'Home', width: 60 },
   keys: { component: KeyboardHelp, title: 'Keyboard Shortcuts', width: 58, height: 34 },
   company: { component: CompanyInfo, title: 'Company Information', width: 36 },
   customers: { component: CustomerList, title: 'Customer:Job List', width: 50, height: 30 },
@@ -81,7 +81,7 @@ export const registry: Registry = {
   item: { component: ItemDialog, title: 'New Item', width: 44 },
   term: { component: TermsDialog, title: 'New Terms', width: 38 },
   // Receive payments, deposits, statements, finance charges
-  payment: { component: ReceivePayments, title: 'Receive Payments', width: 60 },
+  payment: { component: ReceivePayments, title: 'Receive Payments', width: 66 },
   pmtdiscount: { component: PaymentDiscount, title: 'Discount and Credits', width: 30 },
   pmthistory: { component: PaymentHistory, title: 'Payment History', width: 44, height: 20 },
   deposit: { component: MakeDeposits, title: 'Make Deposits', width: 64 },
@@ -91,8 +91,8 @@ export const registry: Registry = {
   financecharges: { component: FinanceCharges, title: 'Assess Finance Charges', width: 52, height: 30 },
   fcsettings: { component: FinanceChargeSettingsDialog, title: 'Finance Charge Settings', width: 34 },
   // Invoices and credit memos, e-mail, print and send queues
-  invoice: { component: Invoice, title: 'Create Invoices', width: 64 },
-  creditmemo: { component: CreditMemo, title: 'Create Credit Memos/Refunds', width: 64 },
+  invoice: { component: Invoice, title: 'Create Invoices', width: 72 },
+  creditmemo: { component: CreditMemo, title: 'Create Credit Memos/Refunds', width: 72 },
   email: { component: EmailDialog, title: 'Send Form by E-mail', width: 44 },
   sendforms: { component: SendForms, title: 'Select Forms to Send', width: 62, height: 28 },
   printforms: { component: PrintForms, title: 'Select Invoices to Print', width: 52, height: 26 },

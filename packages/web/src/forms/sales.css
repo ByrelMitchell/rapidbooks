@@ -41,9 +41,9 @@
 
 .sf-title {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: bold;
-  color: var(--navy);
+  font-size: 1.875rem;
+  font-weight: normal;
+  color: #000000;
   align-self: center;
 }
 
