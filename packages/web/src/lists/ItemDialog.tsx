@@ -1,6 +1,7 @@
 import { ITEM_TYPES, itemType, type Account, type Item, type ItemInput, type ItemTypeCode } from '@rapidbooks/shared';
 import { useEffect, useMemo, useRef } from 'react';
 import { api, useData } from '../api';
+import { AmountField } from '../controls/AmountField';
 import { Combo } from '../controls/Combo';
 import { RateField, type Rate } from '../controls/RateField';
 import { useDesktop } from '../shell/desktop';
@@ -23,7 +24,18 @@ interface Form {
   account_id: number | null;
   inactive: boolean;
   members: Member[];
+  /** "This item is purchased from vendors": the purchase side below is in use. */
+  purchased: boolean;
+  purchase_description: string;
+  /** Cents, up to 3 decimals (five decimals of dollars); null = blank. */
+  cost: number | null;
+  purchase_account_id: number | null;
+  /** The stored item had purchase information (so clearing it must be sent). */
+  hadPurchase: boolean;
 }
+
+/** Item types that can be bought on purchase orders, bills and checks. */
+const PURCHASABLE: ItemTypeCode[] = ['SERVICE', 'PART', 'OTHER_CHARGE'];
 
 let memberSeq = 0;
 const blankMember = (): Member => ({ key: ++memberSeq, item_id: null, qty: '1' });
@@ -43,6 +55,11 @@ const blankForm = (type: ItemTypeCode = 'SERVICE', name = ''): Form => ({
   account_id: null,
   inactive: false,
   members: withBlank([]),
+  purchased: false,
+  purchase_description: '',
+  cost: null,
+  purchase_account_id: null,
+  hadPurchase: false,
 });
 
 const RATE_LABEL: Partial<Record<ItemTypeCode, string>> = {
@@ -63,7 +80,19 @@ function toBody(f: Form): ItemInput | string {
       members.push({ item_id: m.item_id, qty });
     }
   }
+  // The purchase side goes only when it is in use or was stored, so an item saved here
+  // without it keeps whatever the server has (and an older item is not wiped).
+  const buys = PURCHASABLE.includes(f.type) && f.purchased;
+  const purchase: Partial<ItemInput> =
+    buys || f.hadPurchase
+      ? {
+          purchase_description: buys ? f.purchase_description : '',
+          cost: buys ? f.cost ?? 0 : 0,
+          purchase_account_id: buys ? f.purchase_account_id : null,
+        }
+      : {};
   return {
+    ...purchase,
     name: f.name,
     type: f.type,
     parent_id: f.isSub ? f.parent_id : null,
@@ -100,10 +129,21 @@ export function ItemDialog({ winId, props }: WinProps) {
         account_id: i.account_id,
         inactive: i.inactive,
         members: withBlank(i.members.map((m) => ({ key: ++memberSeq, item_id: m.item_id, qty: String(m.qty) }))),
+        ...(() => {
+          const had = i.purchase_description !== '' || i.cost !== 0 || i.purchase_account_id !== null;
+          return {
+            purchased: had,
+            purchase_description: i.purchase_description,
+            cost: i.cost !== 0 ? i.cost : null,
+            purchase_account_id: i.purchase_account_id,
+            hadPurchase: had,
+          };
+        })(),
       };
     },
     validate: (f) => {
       if (f.isSub && f.parent_id === null) return 'Choose the parent item, or clear "Subitem of".';
+      if (PURCHASABLE.includes(f.type) && f.purchased && (f.cost ?? 0) < 0) return 'The cost cannot be negative.';
       const b = toBody(f);
       return typeof b === 'string' ? b : null;
     },
@@ -152,6 +192,14 @@ export function ItemDialog({ winId, props }: WinProps) {
         .filter((a) => a.type !== 'AR' && a.type !== 'AP' && (!a.inactive || a.id === form.account_id))
         .map((a) => ({ id: a.id, label: a.full_name })),
     [accounts, form.account_id],
+  );
+
+  const purchaseAccountOptions = useMemo(
+    () =>
+      (accounts ?? [])
+        .filter((a) => a.type !== 'AR' && a.type !== 'AP' && (!a.inactive || a.id === form.purchase_account_id))
+        .map((a) => ({ id: a.id, label: a.full_name })),
+    [accounts, form.purchase_account_id],
   );
 
   const setMember = (i: number, patch: Partial<Member>) =>
@@ -261,6 +309,46 @@ export function ItemDialog({ winId, props }: WinProps) {
           </>
         )}
       </div>
+
+      {PURCHASABLE.includes(form.type) && (
+        <fieldset className="groupbox item-purchase">
+          <legend>
+            <label className="check">
+              <input type="checkbox" checked={form.purchased} onChange={(e) => update({ purchased: e.target.checked })} />
+              This item is purchased from vendors (purchase orders, bills, checks)
+            </label>
+          </legend>
+          {form.purchased && (
+            <div className="form-grid">
+              <label htmlFor={fid('pdesc')}>Description on Purchase Transactions</label>
+              <textarea
+                id={fid('pdesc')}
+                className="field"
+                rows={2}
+                value={form.purchase_description}
+                onChange={(e) => update({ purchase_description: e.target.value })}
+              />
+              <label htmlFor={fid('cost')}>Cost</label>
+              <AmountField
+                id={fid('cost')}
+                className="rate-field"
+                decimals={5}
+                value={form.cost}
+                onChange={(cost) => update({ cost })}
+                title="Up to five decimal places"
+              />
+              <label htmlFor={fid('pacct')}>Expense Account</label>
+              <Combo
+                id={fid('pacct')}
+                options={purchaseAccountOptions}
+                value={form.purchase_account_id}
+                onChange={(a) => update({ purchase_account_id: a })}
+                {...accountQuickFill(desk, { type: 'EXP' })}
+              />
+            </div>
+          )}
+        </fieldset>
+      )}
 
       {form.type === 'GROUP' && (
         <div className="grid-wrap group-grid">

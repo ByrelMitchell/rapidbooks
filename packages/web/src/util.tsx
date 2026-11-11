@@ -38,12 +38,13 @@ export function parseMnemonic(label: string): { text: string; index: number; key
 export function Mnemonic({ label }: { label: string }): ReactNode {
   const { text, index } = parseMnemonic(label);
   if (index < 0) return text;
+  // One span, so a flex parent with a gap (checkbox labels, tabs) doesn't split the word.
   return (
-    <>
+    <span>
       {text.slice(0, index)}
       <u>{text[index]}</u>
       {text.slice(index + 1)}
-    </>
+    </span>
   );
 }
 

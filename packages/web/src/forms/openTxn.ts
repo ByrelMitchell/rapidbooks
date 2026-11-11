@@ -18,6 +18,18 @@ export const TXN_WINDOWS: Record<string, string> = {
   CREDITMEMO: 'creditmemo',
   PAYMENT: 'payment',
   DEPOSIT: 'deposit',
+  PURCHORD: 'purchaseorder',
+  BILL: 'bill',
+  BILLCREDIT: 'bill',
+  BILLPMT: 'billpmt',
+  CHECK: 'check',
+  TRANSFER: 'transfer',
+  PAYCHECK: 'paycheck',
+};
+
+/** Extra window props for a type that shares a window kind (a bill credit opens Enter Bills with Credit). */
+const TXN_WINDOW_PROPS: Record<string, Record<string, unknown>> = {
+  BILLCREDIT: { credit: true },
 };
 
 /** Open a transaction in its form; false (with a status message) if that kind cannot be opened yet. */
@@ -27,6 +39,6 @@ export function openTxn(desk: Desktop, type: string, id: number): boolean {
     desk.setStatus('This kind of transaction cannot be opened yet.');
     return false;
   }
-  desk.open(kind, { id });
+  desk.open(kind, { id, ...TXN_WINDOW_PROPS[type] });
   return true;
 }

@@ -11,6 +11,16 @@ import { EmailDialog } from '../forms/EmailDialog';
 import { PrintForms, SendForms } from '../forms/FormQueues';
 import { CreditMemo, Invoice } from '../forms/SalesForm';
 import { TxnHistory, TxnJournal } from '../forms/TxnInfo';
+import { BillPayment } from '../forms/BillPayment';
+import { EnterBills } from '../forms/EnterBills';
+import { PayBills } from '../forms/PayBills';
+import { BillCredits, BillDiscount, PoChooser } from '../forms/PurchaseDialogs';
+import { PurchaseOrder } from '../forms/PurchaseOrder';
+import { Paycheck } from '../forms/Paycheck';
+import { PrintChecks } from '../forms/PrintChecks';
+import { TransferFunds } from '../forms/TransferFunds';
+import { WriteChecks } from '../forms/WriteChecks';
+import { PayrollItemDialog, PayrollItemList } from '../lists/PayrollItemList';
 import { AccountDialog } from '../lists/AccountDialog';
 import { ChartOfAccounts } from '../lists/ChartOfAccounts';
 import { ItemDialog } from '../lists/ItemDialog';
@@ -73,4 +83,19 @@ export const registry: Registry = {
   applycredits: { component: ApplyCredits, title: 'Apply Credits', width: 52 },
   txnhistory: { component: TxnHistory, title: 'Transaction History', width: 46, height: 20 },
   txnjournal: { component: TxnJournal, title: 'Transaction Journal', width: 62, height: 20 },
+  // Purchase orders, bills, Pay Bills, bill payments
+  purchaseorder: { component: PurchaseOrder, title: 'Create Purchase Orders', width: 64 },
+  bill: { component: EnterBills, title: 'Enter Bills', width: 62 },
+  pochooser: { component: PoChooser, title: 'Open Purchase Orders', width: 50, height: 22 },
+  paybills: { component: PayBills, title: 'Pay Bills', width: 66 },
+  billdiscount: { component: BillDiscount, title: 'Discount', width: 32 },
+  billcredits: { component: BillCredits, title: 'Credits', width: 52 },
+  billpmt: { component: BillPayment, title: 'Bill Payments (Check)', width: 60 },
+  // Checks, transfers, payroll
+  check: { component: WriteChecks, title: 'Write Checks', width: 60 },
+  transfer: { component: TransferFunds, title: 'Transfer Funds Between Accounts', width: 52 },
+  paycheck: { component: Paycheck, title: 'Enter Paycheck', width: 66 },
+  payrollitems: { component: PayrollItemList, title: 'Payroll Item List', width: 56, height: 24 },
+  payrollitem: { component: PayrollItemDialog, title: 'New Payroll Item', width: 44 },
+  printchecks: { component: PrintChecks, title: 'Select Checks to Print', width: 54, height: 26 },
 };

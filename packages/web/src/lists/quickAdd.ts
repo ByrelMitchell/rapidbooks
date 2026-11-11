@@ -21,6 +21,7 @@ export const LIST_WINDOWS: Record<string, string> = {
   Account: 'accounts',
   Item: 'items',
   Terms: 'terms',
+  'Payroll Item': 'payrollitems',
   ...Object.fromEntries(Object.values(NAME_WINDOWS).map((w) => [w.listName, w.list])),
 };
 

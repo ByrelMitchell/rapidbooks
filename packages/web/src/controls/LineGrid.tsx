@@ -8,11 +8,11 @@ import {
   type TxnLine,
 } from '@rapidbooks/shared';
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type Ref } from 'react';
-import { itemQuickFill } from '../lists/quickAdd';
+import { itemQuickFill, nameQuickFill } from '../lists/quickAdd';
 import { useDesktop } from '../shell/desktop';
 import { commitActiveField } from '../util';
 import { AmountField, formatAmount, parseAmount } from './AmountField';
-import { Combo } from './Combo';
+import { Combo, type ComboOption } from './Combo';
 import { formatPercent, parseRate } from './RateField';
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,8 @@ export interface GridLine {
   amount: number | null;
   /** Lines with an account and no item (finance charges): shown read-only and sent back unchanged. */
   accountId: number | null;
+  /** Customer:Job of a purchase line (only with the grid's `customers` column). */
+  nameId?: number | null;
 }
 
 let lineSeq = 0;
@@ -264,7 +266,7 @@ function CommitCell<T>({
 // ---------------------------------------------------------------------------
 // The grid
 
-export type LineCol = 'item' | 'description' | 'qty' | 'rate' | 'amount';
+export type LineCol = 'item' | 'description' | 'qty' | 'rate' | 'amount' | 'customer';
 
 export interface LineGridHandle {
   /** Ctrl+Insert: a blank line above the current one. */
@@ -289,6 +291,13 @@ export interface LineGridProps {
   disabled?: boolean;
   /** Column titles (purchase forms say "Cost" for Rate). */
   titles?: Partial<Record<LineCol, string>>;
+  /**
+   * Purchase forms: picking an item fills its purchase description (or its description
+   * when it has none) and its cost; percentages are not accepted in the rate column.
+   */
+  purchase?: boolean;
+  /** Customer:Job choices: shows a Customer:Job column (purchase forms) that sets each line's nameId. */
+  customers?: ComboOption[];
   ref?: Ref<LineGridHandle>;
 }
 
@@ -299,7 +308,7 @@ export interface LineGridProps {
  * A Group item becomes its member lines. Tab goes across then down, Up/Down move
  * between rows, Ctrl+Insert / Ctrl+Delete (through the handle) insert and delete lines.
  */
-export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows = 6, disabled, titles, ref }: LineGridProps) {
+export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows = 6, disabled, titles, purchase, customers, ref }: LineGridProps) {
   const desk = useDesktop();
   const map = useMemo(() => itemMap(items), [items]);
   const amounts = useMemo(() => computeAmounts(lines, map), [lines, map]);
@@ -359,10 +368,13 @@ export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows
         l.percent = false;
         return l;
       }
-      l.description = it.description;
+      l.description = purchase ? it.purchase_description || it.description : it.description;
       if (it.type === 'SUBTOTAL' || it.type === 'GROUP') {
         l.qty = null;
         l.rate = null;
+        l.percent = false;
+      } else if (purchase) {
+        l.rate = it.cost;
         l.percent = false;
       } else {
         l.rate = it.rate;
@@ -425,11 +437,12 @@ export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows
     <div className="grid-wrap doc-grid" ref={rootRef}>
       <table className="line-grid">
         <colgroup>
-          <col style={{ width: '22%' }} />
+          <col style={{ width: customers ? '18%' : '22%' }} />
           <col />
-          <col style={{ width: '9%' }} />
-          <col style={{ width: '12%' }} />
-          <col style={{ width: '13%' }} />
+          <col style={{ width: customers ? '8%' : '9%' }} />
+          <col style={{ width: customers ? '11%' : '12%' }} />
+          <col style={{ width: customers ? '12%' : '13%' }} />
+          {customers && <col style={{ width: '18%' }} />}
         </colgroup>
         <thead>
           <tr>
@@ -438,6 +451,7 @@ export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows
             <th className="al-right">{title('qty', 'Qty')}</th>
             <th className="al-right">{title('rate', 'Rate')}</th>
             <th className="al-right">{title('amount', 'Amount')}</th>
+            {customers && <th>{title('customer', 'Customer:Job')}</th>}
           </tr>
         </thead>
         <tbody onKeyDown={onKeyDown}>
@@ -499,6 +513,7 @@ export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows
                     parse={(t) => {
                       if (t.trim() === '') return { ...l, rate: null, percent: false };
                       const r = parseRate(t);
+                      if (r?.percent && purchase) return undefined; // a cost is never a percentage
                       return r ? { ...l, rate: r.rate, percent: r.percent } : undefined;
                     }}
                     onCommit={(v) =>
@@ -535,6 +550,19 @@ export function LineGrid({ lines, setLines, items, accounts, itemFilter, minRows
                     />
                   )}
                 </td>
+                {customers && (
+                  <td>
+                    <Combo
+                      options={customers}
+                      value={l.nameId ?? null}
+                      onChange={(nameId) => edit(l.key, (x) => ({ ...x, nameId }))}
+                      {...cell('customer')}
+                      aria-label={`Customer:Job, line ${n}`}
+                      disabled={disabled || acctLine}
+                      {...nameQuickFill(desk, 'customer')}
+                    />
+                  </td>
+                )}
               </tr>
             );
           })}

@@ -61,8 +61,11 @@ export function Register({ winId, props }: WinProps) {
     }
   };
 
+  // In a bank register a new entry is a check on that account (as in QuickBooks).
+  const newEntry = () => (account?.type === 'BANK' ? desk.open('check', { id: null, accountId }) : desk.open('journal', { id: null }));
+
   useWindowCommands(winId, {
-    new: () => desk.open('journal', { id: null }),
+    new: newEntry,
     edit: () => openTxn(current),
     delete: () => void deleteTxn(),
   });
@@ -115,9 +118,19 @@ export function Register({ winId, props }: WinProps) {
         label="Register"
       />
       <div className="button-row">
-        <button type="button" className="btn" onClick={() => desk.open('journal', { id: null })}>
-          New Entry
+        <button type="button" className="btn" onClick={newEntry} title="Ctrl+N">
+          {isBank ? 'New Check' : 'New Entry'}
         </button>
+        {isBank && (
+          <>
+            <button type="button" className="btn" onClick={() => desk.open('deposit', { id: null })}>
+              Deposit
+            </button>
+            <button type="button" className="btn" onClick={() => desk.open('transfer', { id: null })}>
+              Transfer
+            </button>
+          </>
+        )}
         <button type="button" className="btn" disabled={!current} onClick={() => openTxn(current)}>
           Edit Transaction
         </button>

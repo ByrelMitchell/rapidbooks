@@ -77,7 +77,28 @@ export function NameList({ winId, kind }: WinProps & { kind: NameKind }) {
                 </button>
               </>
             )
-          : undefined
+          : kind === 'vendor'
+            ? (cur) => (
+                <>
+                  {/* Activities */}
+                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('bill', { id: null, vendorId: cur.id })}>
+                    Enter Bills
+                  </button>
+                  <button type="button" className="btn" onClick={() => desk.open('paybills')}>
+                    Pay Bills
+                  </button>
+                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('purchaseorder', { id: null, vendorId: cur.id })}>
+                    Create Purchase Orders
+                  </button>
+                </>
+              )
+            : kind === 'employee'
+              ? (cur) => (
+                  <button type="button" className="btn" disabled={!cur} onClick={() => cur && desk.open('paycheck', { id: null, employeeId: cur.id })}>
+                    Write Paycheck
+                  </button>
+                )
+              : undefined
       }
     />
   );

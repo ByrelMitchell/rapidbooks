@@ -43,7 +43,13 @@ export function TxnHistory({ winId, props }: WinProps) {
     { key: 'date', title: 'Date', width: '7rem', render: (r) => formatUsDate(r.date) },
     { key: 'type', title: 'Type', width: '6rem', render: (r) => TXN_TYPE_SHORT[r.type] ?? r.type },
     { key: 'num', title: 'Num', width: '6rem', render: (r) => r.num },
-    { key: 'kind', title: 'Link', render: (r) => (r.kind === 'deposit' ? 'Deposit' : r.discount ? 'Applied (with discount)' : 'Applied') },
+    {
+      key: 'kind',
+      title: 'Link',
+      // 'po' links (bill <-> purchase order) come from purchase transactions.
+      render: (r) =>
+        r.kind === 'deposit' ? 'Deposit' : (r.kind as string) === 'po' ? 'Received' : r.discount ? 'Applied (with discount)' : 'Applied',
+    },
     { key: 'amount', title: 'Amount', width: '8rem', align: 'right', render: (r) => formatMoney(r.amount + r.discount) },
   ];
 

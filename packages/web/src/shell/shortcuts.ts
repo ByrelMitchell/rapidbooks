@@ -24,7 +24,6 @@ export async function openRegister(desk: Desktop) {
 }
 
 const NOT_YET: Record<string, string> = {
-  KeyW: 'Write Checks',
   KeyF: 'Find',
   KeyQ: 'QuickReport',
   KeyY: 'Transaction Journal',
@@ -108,6 +107,12 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         if (code === 'KeyI') {
           e.preventDefault();
           d.open('invoice', { id: null });
+          return;
+        }
+        // Ctrl+W: Write Checks (reaches the page only in View > Full Screen; Alt+B, W always works).
+        if (code === 'KeyW') {
+          e.preventDefault();
+          d.open('check', { id: null });
           return;
         }
         const feature = NOT_YET[code];
