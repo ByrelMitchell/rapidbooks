@@ -81,7 +81,5 @@ export function NameList({ winId, kind }: WinProps & { kind: NameKind }) {
 }
 
 /** Registry components, one per kind (each window kind has its own title and size). */
-export const CustomerList = (p: WinProps) => <NameList {...p} kind="customer" />;
-export const VendorList = (p: WinProps) => <NameList {...p} kind="vendor" />;
 export const EmployeeList = (p: WinProps) => <NameList {...p} kind="employee" />;
 export const OtherNameList = (p: WinProps) => <NameList {...p} kind="other" />;

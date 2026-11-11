@@ -8,6 +8,7 @@ import { useDesktop } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { accountQuickFill, itemQuickFill } from './quickAdd';
 import { RecordDialogFrame, useRecordDialog } from './RecordDialog';
+import './dialogs2013.css';
 
 interface Member {
   key: number;
@@ -69,6 +70,23 @@ const RATE_LABEL: Partial<Record<ItemTypeCode, string>> = {
   DISCOUNT: 'Amount or %',
 };
 
+/** QuickBooks 2013's words beside the Type box. */
+const TYPE_HELP: Record<ItemTypeCode, string> = {
+  SERVICE: 'Use for services you charge for or purchase, like specialized labor, consulting hours, or professional fees.',
+  PART: "Use for goods you buy but don't track, like office supplies, or materials for a specific job that you charge back to the customer.",
+  OTHER_CHARGE: 'Use for miscellaneous labor, material, or part charges, such as delivery charges, setup fees, and service charges.',
+  SUBTOTAL: 'Use to total several items on a form, for example to apply a discount to them.',
+  GROUP: 'Use to quickly enter a group of individual items on an invoice.',
+  DISCOUNT: 'Use to subtract a percentage or fixed amount from a total or subtotal. Do not use this item type for an early payment discount.',
+};
+
+/** The 2013 check box that opens the Purchase / Sales Information halves. */
+const PURCHASE_CHECK: Partial<Record<ItemTypeCode, string>> = {
+  SERVICE: 'This service is used in assemblies or is performed by a subcontractor or partner',
+  PART: 'This item is used in assemblies or is purchased for a specific customer:job',
+  OTHER_CHARGE: 'This item is used in assemblies or is a reimbursable charge',
+};
+
 function toBody(f: Form): ItemInput | string {
   const t = itemType(f.type);
   const members: ItemInput['members'] = [];
@@ -105,6 +123,27 @@ function toBody(f: Form): ItemInput | string {
   };
 }
 
+/** The dialog's form for a stored item. */
+function fromItem(i: Item): Form {
+  const had = i.purchase_description !== '' || i.cost !== 0 || i.purchase_account_id !== null;
+  return {
+    type: i.type,
+    name: i.name,
+    isSub: i.parent_id !== null,
+    parent_id: i.parent_id,
+    description: i.description,
+    rate: { rate: i.rate, percent: i.rate_is_percent },
+    account_id: i.account_id,
+    inactive: i.inactive,
+    members: withBlank(i.members.map((m) => ({ key: ++memberSeq, item_id: m.item_id, qty: String(m.qty) }))),
+    purchased: had,
+    purchase_description: i.purchase_description,
+    cost: i.cost !== 0 ? i.cost : null,
+    purchase_account_id: i.purchase_account_id,
+    hadPurchase: had,
+  };
+}
+
 export function ItemDialog({ winId, props }: WinProps) {
   const id = (props.id as number | null | undefined) ?? null;
   const presetParent = (props.parentId as number | null | undefined) ?? null;
@@ -117,30 +156,7 @@ export function ItemDialog({ winId, props }: WinProps) {
     id,
     initial: () => blankForm((props.type as ItemTypeCode | undefined) ?? 'SERVICE', (props.name as string | undefined) ?? ''),
     blank: (prev) => blankForm(prev.type),
-    load: async (rid) => {
-      const i = await api.get<Item>(`/api/items/${rid}`);
-      return {
-        type: i.type,
-        name: i.name,
-        isSub: i.parent_id !== null,
-        parent_id: i.parent_id,
-        description: i.description,
-        rate: { rate: i.rate, percent: i.rate_is_percent },
-        account_id: i.account_id,
-        inactive: i.inactive,
-        members: withBlank(i.members.map((m) => ({ key: ++memberSeq, item_id: m.item_id, qty: String(m.qty) }))),
-        ...(() => {
-          const had = i.purchase_description !== '' || i.cost !== 0 || i.purchase_account_id !== null;
-          return {
-            purchased: had,
-            purchase_description: i.purchase_description,
-            cost: i.cost !== 0 ? i.cost : null,
-            purchase_account_id: i.purchase_account_id,
-            hadPurchase: had,
-          };
-        })(),
-      };
-    },
+    load: async (rid) => fromItem(await api.get<Item>(`/api/items/${rid}`)),
     validate: (f) => {
       if (f.isSub && f.parent_id === null) return 'Choose the parent item, or clear "Subitem of".';
       if (PURCHASABLE.includes(f.type) && f.purchased && (f.cost ?? 0) < 0) return 'The cost cannot be negative.';
@@ -168,6 +184,16 @@ export function ItemDialog({ winId, props }: WinProps) {
     const p = items.find((x) => x.id === presetParent);
     if (p) setForm((f) => ({ ...f, type: p.type, isSub: true, parent_id: p.id }));
   }, [items, presetParent, setForm]);
+
+  // Item > Duplicate Item: a new item with everything of that one but its name.
+  const copyOf = (props.copyOf as number | undefined) ?? null;
+  const copyDone = useRef(copyOf === null);
+  useEffect(() => {
+    if (copyDone.current || !items) return;
+    copyDone.current = true;
+    const src = items.find((x) => x.id === copyOf);
+    if (src) setForm({ ...fromItem(src), name: '', inactive: false, hadPurchase: false });
+  }, [items, copyOf, setForm]);
 
   // Possible parents: same type, not this item or anything under it.
   const parentOptions = useMemo(() => {
@@ -210,11 +236,42 @@ export function ItemDialog({ winId, props }: WinProps) {
     });
 
   const fid = (k: string) => `${winId}-${k}`;
+  const buys = PURCHASABLE.includes(form.type) && form.purchased;
+  const description = (
+    <textarea
+      id={fid('desc')}
+      className="field"
+      rows={3}
+      value={form.description}
+      onChange={(e) => update({ description: e.target.value })}
+    />
+  );
+  const rateLabel = (label: string) => <label htmlFor={fid('rate')}>{label}</label>;
+  const rateField = (
+    <RateField
+      id={fid('rate')}
+      className="rate-field"
+      value={form.rate}
+      onChange={(rate) => update({ rate })}
+      title={t.allowsPercent ? 'An amount, or a percentage such as 10%' : 'Up to five decimal places'}
+    />
+  );
+  const accountLabel = (label: string) => <label htmlFor={fid('account')}>{label}</label>;
+  const accountCombo = (
+    <Combo
+      id={fid('account')}
+      options={accountOptions}
+      value={form.account_id}
+      onChange={(a) => update({ account_id: a })}
+      {...accountQuickFill(desk, { type: 'INC' })}
+    />
+  );
 
   return (
     <RecordDialogFrame
       dlg={dlg}
       winId={winId}
+      className="it13"
       inactive={
         <label className="check">
           <input type="checkbox" checked={form.inactive} onChange={(e) => update({ inactive: e.target.checked })} />
@@ -222,8 +279,10 @@ export function ItemDialog({ winId, props }: WinProps) {
         </label>
       }
     >
-      <div className="form-grid">
-        <label htmlFor={fid('type')}>Type</label>
+      <fieldset className="it-type">
+        <legend>
+          <label htmlFor={fid('type')}>Type</label>
+        </legend>
         <select
           id={fid('type')}
           className="field"
@@ -248,106 +307,102 @@ export function ItemDialog({ winId, props }: WinProps) {
             </option>
           ))}
         </select>
+        <p className="it-type-help">{TYPE_HELP[form.type]}</p>
+      </fieldset>
 
-        <label htmlFor={fid('name')}>Item Name/Number</label>
-        <input
-          id={fid('name')}
-          className="field"
-          value={form.name}
-          maxLength={100}
-          onChange={(e) => update({ name: e.target.value })}
-        />
-
-        <span />
-        <label className="check">
-          <input type="checkbox" checked={form.isSub} onChange={(e) => update({ isSub: e.target.checked })} />
-          Subitem of
-        </label>
-
-        <span />
-        <Combo
-          options={parentOptions}
-          value={form.isSub ? form.parent_id : null}
-          onChange={(pid) => update({ parent_id: pid })}
-          disabled={!form.isSub}
-          aria-label="Parent item"
-          listName="Item"
-        />
-
-        <label htmlFor={fid('desc')}>Description</label>
-        <textarea
-          id={fid('desc')}
-          className="field"
-          rows={2}
-          value={form.description}
-          onChange={(e) => update({ description: e.target.value })}
-        />
-
-        {t.hasRate && (
-          <>
-            <label htmlFor={fid('rate')}>{RATE_LABEL[form.type] ?? 'Rate'}</label>
-            <RateField
-              id={fid('rate')}
-              className="rate-field"
-              value={form.rate}
-              onChange={(rate) => update({ rate })}
-              title={t.allowsPercent ? 'An amount, or a percentage such as 10%' : 'Up to five decimal places'}
-            />
-          </>
-        )}
-
-        {t.needsAccount && (
-          <>
-            <label htmlFor={fid('account')}>Account</label>
-            <Combo
-              id={fid('account')}
-              options={accountOptions}
-              value={form.account_id}
-              onChange={(a) => update({ account_id: a })}
-              {...accountQuickFill(desk, { type: 'INC' })}
-            />
-          </>
-        )}
+      <div className="it-row">
+        <div className="stack">
+          <label htmlFor={fid('name')}>Item Name/Number</label>
+          <input
+            id={fid('name')}
+            className="field"
+            value={form.name}
+            maxLength={100}
+            onChange={(e) => update({ name: e.target.value })}
+          />
+        </div>
+        <div className="stack">
+          <label className="check">
+            <input type="checkbox" checked={form.isSub} onChange={(e) => update({ isSub: e.target.checked })} />
+            Subitem of
+          </label>
+          <Combo
+            options={parentOptions}
+            value={form.isSub ? form.parent_id : null}
+            onChange={(pid) => update({ parent_id: pid })}
+            disabled={!form.isSub}
+            aria-label="Parent item"
+            listName="Item"
+          />
+        </div>
       </div>
 
       {PURCHASABLE.includes(form.type) && (
-        <fieldset className="groupbox item-purchase">
-          <legend>
-            <label className="check">
-              <input type="checkbox" checked={form.purchased} onChange={(e) => update({ purchased: e.target.checked })} />
-              This item is purchased from vendors (purchase orders, bills, checks)
-            </label>
-          </legend>
-          {form.purchased && (
-            <div className="form-grid">
-              <label htmlFor={fid('pdesc')}>Description on Purchase Transactions</label>
-              <textarea
-                id={fid('pdesc')}
-                className="field"
-                rows={2}
-                value={form.purchase_description}
-                onChange={(e) => update({ purchase_description: e.target.value })}
-              />
-              <label htmlFor={fid('cost')}>Cost</label>
-              <AmountField
-                id={fid('cost')}
-                className="rate-field"
-                decimals={5}
-                value={form.cost}
-                onChange={(cost) => update({ cost })}
-                title="Up to five decimal places"
-              />
-              <label htmlFor={fid('pacct')}>Expense Account</label>
-              <Combo
-                id={fid('pacct')}
-                options={purchaseAccountOptions}
-                value={form.purchase_account_id}
-                onChange={(a) => update({ purchase_account_id: a })}
-                {...accountQuickFill(desk, { type: 'EXP' })}
-              />
+        <label className="check">
+          <input type="checkbox" checked={form.purchased} onChange={(e) => update({ purchased: e.target.checked })} />
+          {PURCHASE_CHECK[form.type]}
+        </label>
+      )}
+
+      {buys ? (
+        <div className="it-box two">
+          <div className="stack">
+            <b>Purchase Information</b>
+            <label htmlFor={fid('pdesc')}>Description on Purchase Transactions</label>
+            <textarea
+              id={fid('pdesc')}
+              className="field"
+              rows={3}
+              value={form.purchase_description}
+              onChange={(e) => update({ purchase_description: e.target.value })}
+            />
+            <label htmlFor={fid('cost')}>Cost</label>
+            <AmountField
+              id={fid('cost')}
+              className="rate-field"
+              decimals={5}
+              value={form.cost}
+              onChange={(cost) => update({ cost })}
+              title="Up to five decimal places"
+            />
+            <label htmlFor={fid('pacct')}>Expense Account</label>
+            <Combo
+              id={fid('pacct')}
+              options={purchaseAccountOptions}
+              value={form.purchase_account_id}
+              onChange={(a) => update({ purchase_account_id: a })}
+              {...accountQuickFill(desk, { type: 'EXP' })}
+            />
+          </div>
+          <div className="stack">
+            <b>Sales Information</b>
+            <label htmlFor={fid('desc')}>Description on Sales Transactions</label>
+            {description}
+            {rateLabel('Sales Price')}
+            {rateField}
+            {accountLabel('Income Account')}
+            {accountCombo}
+          </div>
+        </div>
+      ) : (
+        <div className={t.hasRate ? 'it-box' : 'it-box two'}>
+          <div className="stack">
+            <label htmlFor={fid('desc')}>Description</label>
+            {description}
+          </div>
+          {t.hasRate && (
+            <div className="it-side">
+              {rateLabel(RATE_LABEL[form.type] ?? 'Rate')}
+              {rateField}
+              {t.needsAccount && (
+                <>
+                  {accountLabel('Account')}
+                  {accountCombo}
+                </>
+              )}
             </div>
           )}
-        </fieldset>
+        </div>
       )}
 
       {form.type === 'GROUP' && (

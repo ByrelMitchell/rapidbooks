@@ -15,7 +15,7 @@ const COLUMNS = [
   'kind', 'name', 'parent_id', 'company', 'salutation', 'first_name', 'middle_init', 'last_name',
   'contact', 'alt_contact', 'phone', 'alt_phone', 'fax', 'email', 'bill_addr', 'ship_addr', 'notes',
   'account_no', 'terms_id', 'credit_limit', 'picks_up', 'print_as', 'tax_id', 'is_1099', 'ssn',
-  'hire_date', 'release_date', 'inactive',
+  'hire_date', 'release_date', 'inactive', 'job_title', 'mobile', 'cc_email', 'website', 'other_contact',
 ] as const;
 
 const kindLabel = (kind: string) => NAME_KINDS.find((k) => k.code === kind)?.label ?? 'Name';

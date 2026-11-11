@@ -1,6 +1,6 @@
 import { itemType, type Account, type Item } from '@rapidbooks/shared';
 import { useCallback, useMemo } from 'react';
-import { useData } from '../api';
+import { api, useData } from '../api';
 import type { Column } from '../controls/ListView';
 import { formatRate } from '../controls/RateField';
 import { useDesktop } from '../shell/desktop';
@@ -46,6 +46,10 @@ export function ItemList({ winId }: WinProps) {
       onNew={() => desk.open('item', { id: null })}
       onEdit={(i) => desk.open('item', { id: i.id })}
       onQuickReport={(i) => openQuickReport(desk, { item_id: i.id })}
+      onDuplicate={(i) => desk.open('item', { id: null, copyOf: i.id })}
+      setInactive={async (i, inactive) => {
+        await api.put(`/api/items/${i.id}`, { ...i, inactive, members: i.members.map((m) => ({ item_id: m.item_id, qty: m.qty })) });
+      }}
       matches={matches}
       activities={() => [{ label: 'Change Item &Prices', action: () => desk.open('itemprices') }]}
     />

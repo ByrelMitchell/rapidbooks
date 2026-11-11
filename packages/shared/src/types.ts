@@ -830,6 +830,11 @@ export const NameInput = z.object({
   alt_phone: z.string().default(''),
   fax: z.string().default(''),
   email: z.string().default(''),
+  job_title: z.string().default(''),
+  mobile: z.string().default(''),
+  cc_email: z.string().default(''),
+  website: z.string().default(''),
+  other_contact: z.string().default(''), // QuickBooks 2013's "Other 1" box
   bill_addr: z.string().default(''), // lines separated by \n
   ship_addr: z.string().default(''),
   notes: z.string().default(''),

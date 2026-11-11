@@ -81,11 +81,16 @@ export function find(db: DB, q: FindQuery): FindResult {
   const rows = db
     .prepare(
       `SELECT t.id, t.type, t.date, t.num, t.name_id, t.memo, t.pay_method, t.account_id, t.ar_account_id, t.ap_account_id, t.due_date, t.total,
-              (SELECT s.account_id FROM splits s WHERE s.txn_id = t.id ORDER BY s.seq LIMIT 1) AS first_account
+              (SELECT s.account_id FROM splits s WHERE s.txn_id = t.id ORDER BY s.seq LIMIT 1) AS first_account,
+              CASE WHEN t.type IN ('INVOICE', 'BILL')
+                     THEN t.total - COALESCE((SELECT SUM(l.amount + l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id), 0)
+                   WHEN t.type IN ('CREDITMEMO', 'BILLCREDIT', 'PAYMENT')
+                     THEN t.total - COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.from_txn = t.id), 0)
+              END AS open_balance
          FROM txns t ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY t.date DESC, t.id DESC LIMIT ?`,
     )
-    .all(...args, limit + 1) as (TxnHead & { first_account: number | null })[];
+    .all(...args, limit + 1) as (TxnHead & { first_account: number | null; open_balance: number | null })[];
   const out: FindRow[] = rows.slice(0, limit).map((t) => {
     const a = mainAccount(t, t.first_account);
     return {
@@ -99,6 +104,8 @@ export function find(db: DB, q: FindQuery): FindResult {
       account: a !== null ? (L.account.get(a)?.full_name ?? '') : '',
       memo: t.memo,
       amount: t.total,
+      due_date: t.type === 'INVOICE' || t.type === 'BILL' ? t.due_date || t.date : '',
+      open_balance: t.open_balance,
     };
   });
   return { rows: out, more: rows.length > limit };

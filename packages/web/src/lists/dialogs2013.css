@@ -1,0 +1,409 @@
+/* QuickBooks 2013 list dialogs: New Customer / New Vendor (tabs down the left, contact boxes,
+   Bill To / Ship To) and New Item (TYPE box, buttons in a column on the right). */
+
+/* ---------- New Customer / New Vendor ---------- */
+
+.nd13 {
+  max-width: 68rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.nd-cap {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--caption);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.nd-top {
+  display: grid;
+  grid-template-columns: 8.5rem 17rem;
+  gap: 0.5rem 0.375rem;
+  align-items: center;
+}
+
+.nd-top .nd-name {
+  width: 100%;
+}
+
+.nd-ob {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.nd-obamt {
+  width: 5rem;
+}
+
+.nd-obdate {
+  width: 8rem;
+}
+
+.nd-panel {
+  display: flex;
+  align-items: stretch;
+  min-height: 30rem;
+}
+
+.nd-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 9rem;
+  flex: none;
+}
+
+.nd-tabs button {
+  text-align: left;
+  padding: 0.6rem 0.4rem;
+  font: inherit;
+  color: #222222;
+  background: #d6d6d6;
+  border: var(--px) solid #c6c6c6;
+  border-right: none;
+  border-radius: 0.1875rem 0 0 0.1875rem;
+  cursor: default;
+}
+
+.nd-tabs button:hover:not(.on) {
+  background: #e2e2e2;
+}
+
+.nd-tabs button.on {
+  background: var(--field);
+  font-weight: bold;
+  border-color: #dcdcdc;
+  margin-right: calc(-1 * var(--px));
+  position: relative;
+  z-index: 1;
+}
+
+.nd-tabs button:focus-visible {
+  outline: var(--px) dotted #000;
+  outline-offset: -0.25rem;
+}
+
+.nd-page {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem 1.25rem 1.5rem 0.875rem;
+  background: var(--field);
+  border: var(--px) solid #dcdcdc;
+}
+
+.nd-person,
+.nd-grid {
+  display: grid;
+  grid-template-columns: 8.5rem auto;
+  gap: 0.5rem 0.5rem;
+  align-items: center;
+  justify-items: start;
+}
+
+.nd-grid {
+  grid-template-columns: 11rem 16rem;
+  justify-items: stretch;
+}
+
+.nd-grid .check {
+  justify-self: start;
+}
+
+.nd-person .nd-wide {
+  width: 16rem;
+}
+
+.nd-full {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.nd-full .field {
+  width: 11.5rem;
+}
+
+.nd-full .nd-sal {
+  width: 4.5rem;
+}
+
+.nd-full .nd-mi {
+  width: 2.5rem;
+}
+
+.nd-full .field::placeholder {
+  color: #a05c6a;
+  opacity: 1;
+}
+
+.nd-contacts {
+  display: grid;
+  grid-template-columns: 8.5rem 16rem 8.5rem 16rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* The 2013 label box in front of each contact field ("Main Phone ▾"). */
+.nd-type {
+  position: relative;
+  padding: 0.2rem 1.25rem 0.2rem 0.25rem;
+  background: var(--field);
+  border: var(--px) solid #dcdcdc;
+  white-space: nowrap;
+}
+
+.nd-type::after {
+  content: '▾';
+  position: absolute;
+  right: 0.375rem;
+  font-size: 0.75rem;
+  color: #555555;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.nd-addrs {
+  margin: 0.25rem 0 0;
+  padding: 0.5rem 0.75rem 1rem;
+  border: var(--px) solid #dcdcdc;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1rem;
+  align-items: center;
+  max-width: 51rem;
+}
+
+.nd-addrs > legend {
+  padding: 0 0.25rem;
+  margin-left: -0.5rem;
+  font-weight: bold;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+
+.nd-addr {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.nd-addr .nd-cap {
+  text-align: left;
+}
+
+.nd-addr textarea {
+  resize: none;
+  background: #efefef;
+  border-color: #d6d6d6;
+}
+
+.nd-addr textarea:focus {
+  background: var(--field);
+}
+
+.nd-copy {
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+}
+
+.nd-notes-cap {
+  text-align: left;
+}
+
+.nd-notes {
+  max-width: 34rem;
+  resize: vertical;
+}
+
+.nd-note {
+  margin: 0.5rem 0;
+  max-width: 36rem;
+  color: var(--dark);
+}
+
+.rec-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.rec-foot .rec-inactive {
+  flex: 1;
+  padding: 0;
+}
+
+.rec-foot .btn {
+  min-width: 8.75rem;
+  padding: 0.45rem 0.875rem;
+}
+
+.rec-foot .btn.default {
+  color: #ffffff;
+  background: linear-gradient(var(--primary1), var(--primary2));
+  border-color: var(--primary-border);
+}
+
+.rec-foot .btn.default:focus {
+  outline-color: #ffffff;
+}
+
+@media (max-width: 60rem) {
+  .nd-contacts {
+    grid-template-columns: 8.5rem minmax(0, 16rem);
+  }
+  .nd-full {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 40rem) {
+  .nd-panel {
+    flex-direction: column;
+  }
+  .nd-tabs {
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .nd-top,
+  .nd-person,
+  .nd-grid,
+  .nd-addrs {
+    grid-template-columns: 1fr;
+  }
+  .nd-cap {
+    text-align: left;
+  }
+  .nd-wide,
+  .nd-full .field {
+    width: 100%;
+  }
+}
+
+/* ---------- New Item ---------- */
+
+.it13 {
+  max-width: 52rem;
+}
+
+.it13 .rec-body {
+  gap: 1.25rem;
+}
+
+.it13 .rec-fields {
+  gap: 0.75rem;
+}
+
+.it13 .rec-side {
+  width: 9.5rem;
+}
+
+.it13 .rec-side .btn {
+  padding: 0.45rem 0.5rem;
+}
+
+.it13 .rec-side .btn.default {
+  color: #ffffff;
+  background: linear-gradient(var(--primary1), var(--primary2));
+  border-color: var(--primary-border);
+}
+
+.it13 .rec-side .btn.default:focus {
+  outline-color: #ffffff;
+}
+
+.it13 .rec-inactive {
+  padding-top: 3.5rem;
+}
+
+.it-type {
+  margin: 0;
+  padding: 0.5rem 0.75rem 1rem;
+  border: var(--px) solid #dcdcdc;
+  display: grid;
+  grid-template-columns: 12.5rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.it-type > legend {
+  padding: 0;
+  margin-left: -0.375rem;
+  font-weight: bold;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+}
+
+.it-type select:focus,
+.it-type select:not(:disabled) {
+  font-weight: normal;
+}
+
+.it-type-help {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.it-row {
+  display: grid;
+  grid-template-columns: 10.5rem 13.5rem 1fr;
+  gap: 0.375rem 1.5rem;
+  align-items: end;
+}
+
+.it-row .stack {
+  gap: 0.25rem;
+}
+
+.it-box {
+  margin: 0;
+  padding: 0.5rem;
+  border: var(--px) solid #dcdcdc;
+  display: grid;
+  grid-template-columns: 1fr 14rem;
+  gap: 0.375rem 1rem;
+  align-items: start;
+}
+
+.it-box.two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.it-box > legend {
+  padding: 0 0.25rem;
+  font-weight: bold;
+}
+
+.it-box textarea {
+  min-height: 4.75rem;
+  resize: vertical;
+}
+
+.it-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.it-side .rate-field {
+  width: 7rem;
+}
+
+.it-side .combo {
+  width: 100%;
+}
+
+@media (max-width: 40rem) {
+  .it-type,
+  .it-row,
+  .it-box,
+  .it-box.two {
+    grid-template-columns: 1fr;
+  }
+}

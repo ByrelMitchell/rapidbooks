@@ -115,7 +115,7 @@ const GROUPS: Group[] = [
     rows: [
       [k('Ctrl', 'I'), 'Create Invoices.'],
       [k('Ctrl', 'W'), 'Write Checks. The browser keeps Ctrl+W for itself except in View > Full Screen; Alt+B, W always works.'],
-      [k('Ctrl', 'J'), 'Customer:Job List.'],
+      [k('Ctrl', 'J'), 'Customer Center.'],
       [k('Ctrl', 'A'), 'Chart of Accounts.'],
       [k('Ctrl', 'R'), 'Use Register: the register of the form you are in or of the account selected in the Chart of Accounts, otherwise the first bank account.'],
       [k('Ctrl', 'F'), 'Find.'],

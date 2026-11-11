@@ -10,6 +10,7 @@ export interface QuickFill {
 
 /** Window kind for each name kind's list and edit dialog. */
 export const NAME_WINDOWS: Record<NameKind, { listName: string; list: string; dialog: string }> = {
+  // Ctrl+L on a customer or vendor field opens the Customer / Vendor Center (QuickBooks 2013 has no separate lists).
   customer: { listName: 'Customer:Job', list: 'customers', dialog: 'customer' },
   vendor: { listName: 'Vendor', list: 'vendors', dialog: 'vendor' },
   employee: { listName: 'Employee', list: 'employees', dialog: 'employee' },

@@ -6,6 +6,8 @@ export interface MenuButtonItem {
   shortcut?: string;
   /** No action = shown disabled. */
   action?: () => void;
+  /** An on/off choice (Show Inactive Items): shown with a check mark when on. */
+  checked?: boolean;
 }
 export type MenuButtonEntry = MenuButtonItem | 'sep';
 
@@ -56,7 +58,8 @@ export function MenuButton({ label, items, down }: { label: string; items: MenuB
             ) : (
               <div
                 key={`${i}${x.label}`}
-                role="menuitem"
+                role={x.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+                aria-checked={x.checked}
                 aria-disabled={!x.action}
                 className={`menu-item${x.action ? '' : ' disabled'}`}
                 onClick={() => {
@@ -65,7 +68,12 @@ export function MenuButton({ label, items, down }: { label: string; items: MenuB
                   x.action();
                 }}
               >
-                <span>
+                {x.checked && (
+                  <span className="menu-check" aria-hidden="true">
+                    ✓
+                  </span>
+                )}
+                <span className="menu-label">
                   <Mnemonic label={x.label} />
                 </span>
                 <span className="menu-key">{x.shortcut ?? ''}</span>

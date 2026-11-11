@@ -29,7 +29,8 @@ import { EmployeeCenter } from '../lists/EmployeeCenter';
 import { ItemDialog } from '../lists/ItemDialog';
 import { ItemList } from '../lists/ItemList';
 import { CustomerDialog, EmployeeDialog, OtherNameDialog, VendorDialog } from '../lists/NameDialog';
-import { CustomerList, EmployeeList, OtherNameList, VendorList } from '../lists/NameList';
+import { CustomerCenter, VendorCenter } from '../lists/NameCenter';
+import { EmployeeList, OtherNameList } from '../lists/NameList';
 import { Register } from '../lists/Register';
 import { TermsDialog } from '../lists/TermsDialog';
 import { TermsList } from '../lists/TermsList';
@@ -72,19 +73,19 @@ export const registry: Registry = {
   navigator: { component: Navigator, title: 'Home', width: 60, max: true },
   keys: { component: KeyboardHelp, title: 'Keyboard Shortcuts', width: 58, height: 34, max: true },
   company: { component: CompanyInfo, title: 'Company Information', width: 36 },
-  customers: { component: CustomerList, title: 'Customer:Job List', width: 50, height: 30, max: true },
-  vendors: { component: VendorList, title: 'Vendor List', width: 40, height: 28, max: true },
+  customers: { component: CustomerCenter, title: 'Customer Center', width: 76, height: 40, max: true },
+  vendors: { component: VendorCenter, title: 'Vendor Center', width: 76, height: 40, max: true },
   employees: { component: EmployeeList, title: 'Employee List', width: 40, height: 26, max: true },
   employeecenter: { component: EmployeeCenter, title: 'Employee Center', width: 76, height: 40, max: true },
   othernames: { component: OtherNameList, title: 'Other Names List', width: 44, height: 26, max: true },
   items: { component: ItemList, title: 'Item List', width: 70, height: 30, max: true },
   itemprices: { component: ChangeItemPrices, title: 'Change Item Prices', width: 70, height: 36, max: true },
   terms: { component: TermsList, title: 'Terms List', width: 40, height: 22, max: true },
-  customer: { component: CustomerDialog, title: 'New Customer', width: 54 },
-  vendor: { component: VendorDialog, title: 'New Vendor', width: 54 },
+  customer: { component: CustomerDialog, title: 'New Customer', width: 68, max: true },
+  vendor: { component: VendorDialog, title: 'New Vendor', width: 68, max: true },
   employee: { component: EmployeeDialog, title: 'New Employee', width: 50 },
   othername: { component: OtherNameDialog, title: 'New Name', width: 54 },
-  item: { component: ItemDialog, title: 'New Item', width: 44 },
+  item: { component: ItemDialog, title: 'New Item', width: 54, max: true },
   term: { component: TermsDialog, title: 'New Terms', width: 38 },
   // Receive payments, deposits, statements, finance charges
   payment: { component: ReceivePayments, title: 'Receive Payments', width: 66, max: true },

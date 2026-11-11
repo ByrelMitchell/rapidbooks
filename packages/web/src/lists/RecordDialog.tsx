@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { errorMessage } from '../api';
 import { settleQuickFill } from '../controls/Combo';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
@@ -154,23 +163,46 @@ export function RecordDialogFrame({
   winId,
   inactive,
   children,
+  bottom,
+  className,
+  onKeyDown,
 }: {
   dlg: DialogState;
   winId: string;
-  /** The "… is inactive" checkbox, shown under the buttons. */
+  /** The "… is inactive" checkbox, shown under the buttons (or at the bottom left). */
   inactive?: ReactNode;
   children: ReactNode;
+  /**
+   * QuickBooks 2013's New Customer / New Vendor: the "is inactive" box at the bottom left and
+   * OK, Cancel, Help along the bottom right (no Next button; Alt+N is left to the window).
+   */
+  bottom?: boolean;
+  className?: string;
+  /** Window keys handled before Enter = OK (e.g. Alt+letter tabs); call preventDefault to take a key. */
+  onKeyDown?: (e: KeyboardEvent<HTMLFormElement>) => void;
 }) {
   const desk = useDesktop();
+  const cancel = (
+    <button
+      type="button"
+      className="btn"
+      // Cancel by mouse must not first leave the field (which could ask to Quick Add).
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => desk.close(winId)}
+    >
+      Cancel
+    </button>
+  );
   return (
     <form
       ref={dlg.rootRef}
-      className="dialog rec-dialog"
+      className={`dialog rec-dialog${bottom ? ' rec-bottom' : ''}${className ? ` ${className}` : ''}`}
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         void dlg.submit(false);
       }}
       onKeyDown={(e) => {
+        onKeyDown?.(e);
         const t = e.target as HTMLElement;
         if (e.key !== 'Enter' || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return;
         if (t.tagName === 'BUTTON' || t.tagName === 'TEXTAREA') return;
@@ -181,6 +213,20 @@ export function RecordDialogFrame({
       {dlg.error && <div className="msg-strip error">{dlg.error}</div>}
       {dlg.loading ? (
         <div className="rec-loading">Loading...</div>
+      ) : bottom ? (
+        <>
+          {children}
+          <div className="rec-foot">
+            <div className="rec-inactive">{inactive}</div>
+            <button type="submit" className="btn default">
+              OK
+            </button>
+            {cancel}
+            <button type="button" className="btn" onClick={() => desk.open('keys')} title="Keyboard shortcuts">
+              Help
+            </button>
+          </div>
+        </>
       ) : (
         <div className="rec-body">
           <div className="rec-fields">{children}</div>
@@ -188,15 +234,7 @@ export function RecordDialogFrame({
             <button type="submit" className="btn default">
               OK
             </button>
-            <button
-              type="button"
-              className="btn"
-              // Cancel by mouse must not first leave the field (which could ask to Quick Add).
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => desk.close(winId)}
-            >
-              Cancel
-            </button>
+            {cancel}
             <button type="button" className="btn" onClick={() => void dlg.submit(true)} title="Alt+N">
               <u>N</u>ext
             </button>

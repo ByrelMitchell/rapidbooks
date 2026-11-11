@@ -154,6 +154,12 @@ interface Props<T extends ListRow> {
   activities?: (current: T | null) => MenuButtonEntry[];
   /** Ctrl+Q and Reports > QuickReport: the QuickReport for the selected row. */
   onQuickReport?: (row: T) => void;
+  /** Item > Duplicate Item: a new entry like this one. */
+  onDuplicate?: (row: T) => void;
+  /** Item > Make Item Inactive / Active: save the row with its inactive flag changed. */
+  setInactive?: (row: T, inactive: boolean) => Promise<void>;
+  /** "Items" in "Show Inactive Items" (default: the noun + s). */
+  plural?: string;
   /** The Item List's search bar: does the row match the text? */
   matches?: (row: T, text: string) => boolean;
   /** Something above the list (Item List: its search bar is built in when `matches` is given). */
@@ -206,13 +212,35 @@ export function ListWindow<T extends ListRow>(p: Props<T>) {
 
   const columns = includeInactive ? [inactiveMark<T>(), ...p.columns] : p.columns;
   const noun = p.noun.replace(/:.*/, '').replace(/^./, (c) => c.toUpperCase());
+  const toggleInactive = async () => {
+    const row = current;
+    if (!row || !p.setInactive) return;
+    try {
+      await p.setInactive(row, !row.inactive);
+      desk.setStatus(`${p.rowLabel(row)} is now ${row.inactive ? 'active' : 'inactive'}.`);
+      desk.refresh();
+    } catch (e) {
+      await desk.alert(errorMessage(e));
+    }
+  };
+  const dup = p.onDuplicate;
   const menus: { label: string; items: MenuButtonEntry[] }[] = [
     {
       label: p.title,
       items: [
         { label: p.newLabel ?? 'New', shortcut: 'Ctrl+N', action: p.onNew },
         { label: `Edit ${noun}`, shortcut: 'Ctrl+E', action: current ? edit : undefined },
+        ...(dup ? [{ label: `Duplicate ${noun}`, action: current ? () => dup(current) : undefined }] : []),
         { label: `Delete ${noun}`, shortcut: 'Ctrl+D', action: current ? () => void remove() : undefined },
+        'sep',
+        ...(p.setInactive
+          ? [{ label: `Make ${noun} ${current?.inactive ? 'Active' : 'Inactive'}`, action: current ? () => void toggleInactive() : undefined }]
+          : []),
+        {
+          label: `Show Inactive ${p.plural ?? `${noun}s`}`,
+          checked: includeInactive,
+          action: () => setIncludeInactive(!includeInactive),
+        },
         ...(p.moreEntries ? (['sep', ...p.moreEntries(current)] as MenuButtonEntry[]) : []),
       ],
     },

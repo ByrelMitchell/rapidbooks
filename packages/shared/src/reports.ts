@@ -230,6 +230,9 @@ export interface FindRow {
   account: string; // the transaction's main account (A/R, A/P, the bank...)
   memo: string;
   amount: number; // cents: the transaction total
+  due_date: string; // invoices and bills; '' otherwise
+  /** Cents still open: an invoice's or bill's unpaid amount, a credit's or payment's unapplied amount; null for other types. */
+  open_balance: number | null;
 }
 
 export interface FindResult {

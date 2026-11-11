@@ -92,8 +92,6 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
       items: [
         { label: 'Chart of &Accounts', shortcut: 'Ctrl+A', action: () => desk.open('accounts') },
         { label: '&Item List', action: () => desk.open('items') },
-        { label: '&Customer:Job List', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
-        { label: '&Vendor List', action: () => desk.open('vendors') },
         { label: '&Employee List', action: () => desk.open('employees') },
         { label: '&Other Names List', action: () => desk.open('othernames') },
         'sep',
@@ -123,7 +121,7 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
     {
       label: 'C&ustomers',
       items: [
-        { label: 'Customer:&Job List', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
+        { label: 'Customer Ce&nter', shortcut: 'Ctrl+J', action: () => desk.open('customers') },
         'sep',
         { label: 'Create &Invoices', shortcut: 'Ctrl+I', action: () => desk.open('invoice', { id: null }) },
         { label: 'Create Credit &Memos/Refunds', action: () => desk.open('creditmemo', { id: null }) },
@@ -137,7 +135,7 @@ function buildMenus(desk: Desktop, reportsMenu: Menu, prefs: ViewPrefs): Menu[] 
     {
       label: 'Vend&ors',
       items: [
-        { label: '&Vendor List', action: () => desk.open('vendors') },
+        { label: '&Vendor Center', action: () => desk.open('vendors') },
         'sep',
         { label: 'Create &Purchase Orders', action: () => desk.open('purchaseorder', { id: null }) },
         { label: '&Enter Bills', action: () => desk.open('bill', { id: null }) },
