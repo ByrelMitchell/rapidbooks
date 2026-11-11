@@ -7,7 +7,7 @@ import type { WinProps } from '../shell/registry';
 import { Mnemonic } from '../util';
 import type { EmailStatus } from './EmailDialog';
 import { openTxn } from './openTxn';
-import { docLabel, docToInput, openPdf } from './salesDoc';
+import { docLabel, docToInput, openPdfs, PDF_BLOCKED } from './salesDoc';
 import './sales.css';
 
 /**
@@ -181,13 +181,10 @@ export function PrintForms({ winId }: WinProps) {
     busy.current = true;
     setPrintError(null);
     try {
-      let blocked = 0;
-      for (const f of forms) if (!openPdf(f.id)) blocked++;
-      if (blocked > 0) {
-        await desk.alert(
-          `The browser blocked ${blocked} of the ${forms.length} PDF tabs. Allow pop-ups for RapidBooks in the browser, then print again.`,
-        );
-        if (blocked === forms.length) return;
+      // One combined PDF with every form, in one tab.
+      if (!openPdfs(forms.map((f) => f.id))) {
+        desk.setStatus(PDF_BLOCKED);
+        return;
       }
       let ok: DocSummary[] = [];
       if (await desk.confirm('Did the forms print correctly?', { title: 'Print Forms' })) ok = forms;

@@ -55,6 +55,8 @@ interface Props<T extends ListRow> {
   onEdit: (row: T) => void;
   /** More buttons after New (e.g. Add Job), given the selected row. */
   extraButtons?: (current: T | null) => ReactNode;
+  /** Ctrl+Q and a QuickReport button: the QuickReport for the selected row. */
+  onQuickReport?: (row: T) => void;
 }
 
 /**
@@ -95,7 +97,8 @@ export function ListWindow<T extends ListRow>(p: Props<T>) {
   };
 
   const edit = () => current && p.onEdit(current);
-  useWindowCommands(p.winId, { new: p.onNew, edit, delete: () => void remove() });
+  const quickReport = p.onQuickReport && current ? () => p.onQuickReport!(current) : undefined;
+  useWindowCommands(p.winId, { new: p.onNew, edit, delete: () => void remove(), quickReport });
 
   const columns = includeInactive ? [MARK as Column<T>, ...p.columns] : p.columns;
 
@@ -125,6 +128,11 @@ export function ListWindow<T extends ListRow>(p: Props<T>) {
         <button type="button" className="btn" disabled={!current} onClick={() => void remove()} title="Ctrl+D">
           Delete
         </button>
+        {p.onQuickReport && (
+          <button type="button" className="btn" disabled={!current} onClick={quickReport} title="Ctrl+Q">
+            QuickReport
+          </button>
+        )}
         <span className="spacer" />
         <label className="check" htmlFor={checkId}>
           <input

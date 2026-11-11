@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { loginRequired } from './admin/session';
 import { useDesktop } from './shell/desktop';
 
 export class ApiError extends Error {
@@ -14,11 +15,21 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   try {
     res = await fetch(path, {
       method,
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      // X-Requested-With: the server refuses state-changing requests without it (CSRF defence).
+      headers: {
+        'X-Requested-With': 'RapidBooks',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch {
     throw new ApiError('RapidBooks cannot reach its server. Check that the server is running and try again.', 0);
+  }
+  // Not logged in (or the session ended): show the login screen. Nothing is retried;
+  // the window keeps what was typed, so it can be saved again after logging in.
+  if (res.status === 401) {
+    loginRequired();
+    throw new ApiError('You need to log in to RapidBooks again. Log in, then try again.', 401);
   }
   const text = await res.text();
   let data: unknown = null;

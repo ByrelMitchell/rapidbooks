@@ -573,6 +573,7 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
     if (id !== undefined) {
       old = txnRow(db, id);
       if (!old) throw new AppError(404, 'That transaction no longer exists.');
+      if (old.import_locked) return saveLockedSplits(db, old, input, opts);
       if (old.type !== input.type) throw new AppError(400, 'The type of a transaction cannot be changed.');
       if (!opts.repost && input.version !== old.version) {
         throw new AppError(409, 'This transaction was changed in another window. Reopen it and try again.');
@@ -727,8 +728,19 @@ export function getTxn(db: DB, id: number): AnyTxn {
     version: row.version,
     splits,
   };
+  if (row.import_locked || row.qb_type) {
+    // Imported from QuickBooks (see importWriter below).
+    Object.assign(base, {
+      import_locked: !!row.import_locked,
+      import_note: row.import_note ?? '',
+      qb_type: row.qb_type ?? '',
+      qb_trans_no: row.qb_trans_no ?? '',
+    });
+  }
   if (row.type === 'GENJRNL') return base;
   if (PURCH_TYPES.has(row.type)) return getPurchTxn(db, row, base);
+  // A QuickBooks type RapidBooks has no form for (imported as posted): splits only.
+  if (!DOC_TYPES.has(row.type)) return base;
 
   const lines = (db.prepare(`SELECT ${LINE_COLS} FROM lines WHERE txn_id = ? ORDER BY seq`).all(id) as (Omit<
     TxnLine,
@@ -917,3 +929,164 @@ export function getRegister(db: DB, accountId: number): RegisterRow[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// History import (import/history.ts): the raw path.
+//
+// QuickBooks' own postings are written verbatim, so the ledger matches QuickBooks to the
+// cent even where RapidBooks' builders would post differently. This is still the posting
+// engine: every transaction's splits are checked to sum to zero before they are written.
+// Afterwards each document is run through its ordinary builder (rebuild); when the
+// builder reproduces the splits the document is an ordinary editable one, otherwise it
+// is marked import_locked and can only be edited as raw splits (saveLockedSplits).
+
+const DOC_TYPES = new Set(['INVOICE', 'CREDITMEMO', 'PAYMENT', 'DEPOSIT']);
+
+export interface ImportSplit extends BuiltSplit {
+  cleared: boolean;
+}
+
+export interface ImportTxn {
+  type: string; // a RapidBooks type, or QuickBooks' type name for types without a form
+  header: Header;
+  splits: ImportSplit[]; // in QuickBooks' order
+  is_finance_charge?: boolean;
+  qb_type: string;
+  qb_trans_no: string;
+}
+
+export interface ImportLink {
+  from_txn: number;
+  to_txn: number;
+  kind: 'apply' | 'deposit' | 'po';
+  amount: number;
+  discount: number;
+  discount_account_id: number | null;
+}
+
+/** Prepared statements for writing imported transactions; use inside one database transaction. */
+export function importWriter(db: DB) {
+  const accountIds = new Set((db.prepare('SELECT id FROM accounts').all() as { id: number }[]).map((r) => r.id));
+  const accountExists = db.prepare('SELECT 1 FROM accounts WHERE id = ?');
+  const insTxn = db.prepare(
+    `INSERT INTO txns (type, ${HEADER_COLS.join(', ')}, is_finance_charge, qb_type, qb_trans_no)
+     VALUES (?, ${HEADER_COLS.map(() => '?').join(', ')}, ?, ?, ?)`,
+  );
+  const insSplit = db.prepare(
+    'INSERT INTO splits (txn_id, seq, account_id, amount, name_id, memo, cleared) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  );
+  const delLines = db.prepare('DELETE FROM lines WHERE txn_id = ?');
+  const insLine = db.prepare(
+    `INSERT INTO lines (txn_id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no,
+                        pay_method, payroll_item_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const insLink = db.prepare(
+    'INSERT INTO links (from_txn, to_txn, kind, amount, discount, discount_account_id) VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  const setLock = db.prepare('UPDATE txns SET import_locked = ?, import_note = ? WHERE id = ?');
+
+  return {
+    /** Write the header and splits exactly as given. Throws if they do not sum to zero. */
+    txn(t: ImportTxn): number {
+      if (t.splits.length === 0) throw new AppError(400, 'A transaction needs at least one split.');
+      let sum = 0;
+      for (const s of t.splits) {
+        if (!Number.isInteger(s.amount)) throw new Error('posting: split amount is not whole cents');
+        if (!accountIds.has(s.account_id)) {
+          if (!accountExists.get(s.account_id)) throw new AppError(400, 'One of the accounts on this transaction does not exist.');
+          accountIds.add(s.account_id);
+        }
+        sum += s.amount;
+      }
+      if (sum !== 0) throw new AppError(400, 'The transaction is not in balance.');
+      const h = t.header;
+      const r = insTxn.run(t.type, ...HEADER_COLS.map((c) => h[c]), t.is_finance_charge ? 1 : 0, t.qb_type, t.qb_trans_no);
+      const id = Number(r.lastInsertRowid);
+      t.splits.forEach((s, seq) => insSplit.run(id, seq, s.account_id, s.amount, s.name_id, s.memo, s.cleared ? 1 : 0));
+      return id;
+    },
+    /** Replace a transaction's document lines. */
+    lines(id: number, lines: StoredLine[]) {
+      delLines.run(id);
+      lines.forEach((l, seq) =>
+        insLine.run(
+          id, seq, l.item_id, l.description, l.qty, l.rate, l.rate_is_percent ? 1 : 0, l.amount, l.account_id, l.name_id,
+          l.ref_no, l.pay_method, l.payroll_item_id ?? null,
+        ),
+      );
+    },
+    links(list: ImportLink[]) {
+      for (const l of list) insLink.run(l.from_txn, l.to_txn, l.kind, l.amount, l.discount, l.discount_account_id);
+    },
+    lock(id: number, note: string) {
+      setLock.run(1, note, id);
+    },
+    /**
+     * What the document's ordinary builder makes of `input`, as if the stored transaction
+     * `id` were being re-saved. Writes nothing; throws the builder's AppError if it refuses.
+     */
+    rebuild(input: TxnInput, id: number): Built {
+      return build(db, input, txnRow(db, id));
+    },
+  };
+}
+
+/**
+ * Saving a transaction that was imported as posted (import_locked). Its form cannot
+ * rebuild its splits, so only a journal-style edit is accepted: type GENJRNL with the
+ * splits, date, num, name and memo. The transaction keeps its type, lines and links.
+ */
+function saveLockedSplits(db: DB, old: TxnHeaderRow, input: TxnInput, opts: SaveOpts): { id: number; version: number } {
+  if (input.type !== 'GENJRNL') {
+    const what = old.qb_type || TXN_TYPE_LABELS_LOWER[old.type] || old.type;
+    throw new AppError(
+      400,
+      `This ${what.toLowerCase()} was imported from QuickBooks exactly as QuickBooks posted it${old.import_note ? ` (${old.import_note})` : ''}, so it cannot be saved from its form. Its lines can be changed in the journal view instead.`,
+    );
+  }
+  if (!opts.repost && input.version !== old.version) {
+    throw new AppError(409, 'This transaction was changed in another window. Reopen it and try again.');
+  }
+  const splits = input.splits.map((s) => ({ ...s }));
+  validate(db, splits, 2);
+  const key = old.account_id ?? old.ar_account_id ?? old.ap_account_id;
+  const total =
+    key !== null
+      ? Math.abs(splits.filter((s) => s.account_id === key).reduce((t, s) => t + s.amount, 0))
+      : splits.reduce((t, s) => t + (s.amount > 0 ? s.amount : 0), 0);
+  const oldSplits = db.prepare('SELECT seq, account_id, amount, cleared FROM splits WHERE txn_id = ?').all(old.id) as {
+    seq: number;
+    account_id: number;
+    amount: number;
+    cleared: number;
+  }[];
+  const version = old.version + 1;
+  db.prepare(
+    "UPDATE txns SET date = ?, num = ?, name_id = ?, memo = ?, total = ?, version = ?, updated_at = datetime('now') WHERE id = ?",
+  ).run(input.date, input.num, input.name_id, input.memo, total, version, old.id);
+  db.prepare('DELETE FROM splits WHERE txn_id = ?').run(old.id);
+  const ins = db.prepare(
+    'INSERT INTO splits (txn_id, seq, account_id, amount, name_id, memo, cleared) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  );
+  splits.forEach((s, seq) => {
+    const was = oldSplits.find((o) => o.seq === seq);
+    const cleared = was && was.account_id === s.account_id && was.amount === s.amount ? was.cleared : 0;
+    ins.run(old.id, seq, s.account_id, s.amount, s.name_id, s.memo, cleared);
+  });
+  db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('update', old.id, JSON.stringify(input));
+  return { id: old.id, version };
+}
+
+const TXN_TYPE_LABELS_LOWER: Record<string, string> = {
+  INVOICE: 'invoice',
+  CREDITMEMO: 'credit memo',
+  PAYMENT: 'payment',
+  DEPOSIT: 'deposit',
+  BILL: 'bill',
+  BILLCREDIT: 'bill credit',
+  BILLPMT: 'bill payment',
+  CHECK: 'check',
+  TRANSFER: 'transfer',
+  PAYCHECK: 'paycheck',
+};

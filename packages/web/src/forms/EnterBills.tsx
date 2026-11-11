@@ -20,6 +20,7 @@ import { itemMap, LineGrid, linesForCompare, linesTotal, padLines, type GridLine
 import { nameQuickFill, termsQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
+import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import {
   appendLines,
@@ -460,6 +461,12 @@ export function EnterBills({ winId, props }: WinProps) {
     register: openAp,
     history,
     txnJournal: journal,
+    quickReport: () => {
+      commitActiveField({ quiet: true });
+      const n = formRef.current.vendorId;
+      if (n !== null) openQuickReport(desk, { name_id: n });
+      else desk.setStatus('Choose a name first, then press Ctrl+Q for its QuickReport.');
+    },
     confirmClose: () => (loading ? true : askSave(true)),
   });
 

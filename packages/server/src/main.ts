@@ -1,20 +1,13 @@
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { buildApp } from './app';
-import { openDb, seedDefaults } from './db';
+import { startServer, StartupError } from './server';
+import { loadSettings } from './settings';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = resolve(here, '../../..');
+// Settings come from the environment (see packages/server/src/settings.ts and
+// deploy/rapidbooks.env.example). Loopback by default; set HOST=0.0.0.0 (or the LAN
+// address) when deploying, after setting a password.
 
-const dbPath = process.env.RAPIDBOOKS_DB ?? resolve(root, 'data/rapidbooks.db');
-const port = Number(process.env.PORT ?? 3001);
-// Loopback by default; set HOST=0.0.0.0 (or the LAN address) when deploying.
-const host = process.env.HOST ?? '127.0.0.1';
-
-const db = openDb(dbPath);
-seedDefaults(db);
-
-const app = buildApp(db, { webDist: resolve(root, 'packages/web/dist') });
-app.listen({ port, host }).then((addr) => {
-  console.log(`RapidBooks server listening on ${addr} (database: ${dbPath})`);
-});
+try {
+  await startServer(loadSettings(), { signals: true });
+} catch (e) {
+  console.error(e instanceof StartupError ? e.message : e);
+  process.exit(1);
+}

@@ -8,10 +8,12 @@ import {
   type CompanyInfo,
   type NameKind,
 } from '@rapidbooks/shared';
-import fastifyStatic from '@fastify/static';
-import Fastify from 'fastify';
-import { existsSync } from 'node:fs';
+import Fastify, { type FastifyHttpOptions } from 'fastify';
+import type { Server } from 'node:http';
 import { z, ZodError } from 'zod';
+import { installAuth, recordRoutes, type AuthOptions } from './auth';
+import { registerBackupRoutes } from './backup/routes';
+import type { BackupService } from './backup/service';
 import type { DB } from './db';
 import { AppError } from './errors';
 import { createAccount, deleteAccount, listAccounts, updateAccount } from './ledger/accounts';
@@ -23,12 +25,31 @@ import type { MailerFactory } from './mail/send';
 import { registerPurchaseRoutes } from './routes/purchases';
 import { registerReportRoutes } from './routes/reports';
 import { registerSalesRoutes } from './routes/sales';
+import { registerWebApp } from './static';
+import { registerSystemRoutes, type ListenInfo } from './system';
 
 const Id = z.object({ id: z.coerce.number().int() });
 const NAME_KIND_CODES = NAME_KINDS.map((k) => k.code) as [NameKind, ...NameKind[]];
 
-export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactory } = {}) {
-  const app = Fastify();
+export interface AppOptions {
+  webDist?: string;
+  mailer?: MailerFactory;
+  /** Login (packages/server/src/auth). Omitted = open: no password set, loopback only. */
+  auth?: AuthOptions;
+  /** Backups (packages/server/src/backup): the /api/backup routes exist only when given. */
+  backup?: BackupService;
+  /** Listen with TLS. */
+  https?: { cert: Buffer; key: Buffer };
+  /** Where the server listens, for Help > About. */
+  listen?: ListenInfo;
+}
+
+export function buildApp(db: DB, opts: AppOptions = {}) {
+  // (The https server is typed as http here; the routes don't care which it is.)
+  const app = Fastify((opts.https ? { https: opts.https } : {}) as FastifyHttpOptions<Server>);
+  // Login comes first so its checks cover every route registered after it.
+  recordRoutes(app);
+  installAuth(app, opts.auth);
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof AppError) return reply.status(err.status).send({ error: err.message });
@@ -135,10 +156,12 @@ export function buildApp(db: DB, opts: { webDist?: string; mailer?: MailerFactor
   // Reports, Find, graphs, combined PDFs (Phase 5)
   registerReportRoutes(app, db);
 
-  // The built web app, when there is one (in development Vite serves it instead).
-  if (opts.webDist && existsSync(opts.webDist)) {
-    app.register(fastifyStatic, { root: opts.webDist });
-  }
+  // Backups, health, Help > About
+  if (opts.backup) registerBackupRoutes(app, opts.backup);
+  registerSystemRoutes(app, db, { backup: opts.backup, listen: opts.listen });
+
+  // The built web app, with SPA fallback and cache headers (in development Vite serves it instead).
+  registerWebApp(app, opts.webDist);
 
   return app;
 }

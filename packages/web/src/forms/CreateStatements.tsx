@@ -24,9 +24,6 @@ function monthStart(iso: string): string {
   return `${iso.slice(0, 8)}01`;
 }
 
-/** Ask before opening more than this many PDF tabs at once. */
-const MANY = 5;
-
 const pdfUrl = (customerId: number, from: string, to: string) =>
   `/api/statements/pdf?customer_id=${customerId}&from=${from}&to=${to}`;
 
@@ -110,25 +107,15 @@ export function CreateStatements({ winId }: WinProps) {
       await desk.alert('There are no customers selected to print statements for.');
       return;
     }
-    if (
-      chosen.length > MANY &&
-      !(await desk.confirm(
-        `This will open ${chosen.length} statements, each in its own browser tab. Do you want to continue?`,
-        { yes: '&OK', no: '&Cancel' },
-      ))
-    )
-      return;
-    let blocked = 0;
-    for (const c of chosen) {
-      const w = window.open(pdfUrl(c.id, from, to), '_blank');
-      if (!w) blocked++;
-    }
-    if (blocked > 0) {
-      await desk.alert(
-        `The browser blocked ${blocked} of the ${chosen.length} statement tabs. Allow pop-ups for RapidBooks in the browser (the icon at the right of the address bar), then click Print again.`,
-      );
-    } else {
+    // Every statement in one combined PDF, in one tab.
+    const url =
+      chosen.length === 1
+        ? pdfUrl(chosen[0].id, from, to)
+        : `/api/statements/pdf?customer_ids=${chosen.map((c) => c.id).join(',')}&from=${from}&to=${to}`;
+    if (window.open(url, '_blank')) {
       desk.setStatus(`${chosen.length} statement${chosen.length === 1 ? '' : 's'} opened for printing.`);
+    } else {
+      desk.setStatus('The browser blocked the PDF tab. Allow pop-ups for RapidBooks, then click Print again.');
     }
   };
 

@@ -30,6 +30,8 @@ export interface Commands {
   txnJournal?: () => void;
   /** Ctrl+P: print the form. */
   print?: () => void;
+  /** Ctrl+Q: the QuickReport for the selected account, name or item (or the form's name). */
+  quickReport?: () => void;
   /** Return (or resolve to) false to keep the window open. */
   confirmClose?: () => boolean | Promise<boolean>;
 }

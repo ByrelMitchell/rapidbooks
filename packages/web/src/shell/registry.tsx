@@ -30,6 +30,14 @@ import { CustomerList, EmployeeList, OtherNameList, VendorList } from '../lists/
 import { Register } from '../lists/Register';
 import { TermsDialog } from '../lists/TermsDialog';
 import { TermsList } from '../lists/TermsList';
+import { AboutWindow } from '../admin/AboutWindow';
+import { BackupWindow } from '../admin/BackupWindow';
+import { FindWindow } from '../reports/FindWindow';
+import { IncomeExpenseGraphWindow, SalesGraphWindow } from '../reports/Graphs';
+import { MemorizeDialog, MemorizedList } from '../reports/Memorized';
+import { ModifyReport } from '../reports/ModifyReport';
+import { ReportFinder } from '../reports/ReportFinder';
+import { ReportWindow } from '../reports/ReportWindow';
 
 /** What every window component receives. */
 export interface WinProps {
@@ -98,4 +106,16 @@ export const registry: Registry = {
   payrollitems: { component: PayrollItemList, title: 'Payroll Item List', width: 56, height: 24 },
   payrollitem: { component: PayrollItemDialog, title: 'New Payroll Item', width: 44 },
   printchecks: { component: PrintChecks, title: 'Select Checks to Print', width: 54, height: 26 },
+  // File > Back Up, Help > About RapidBooks
+  backup: { component: BackupWindow, title: 'Back Up', width: 50, height: 32 },
+  about: { component: AboutWindow, title: 'About RapidBooks', width: 44 },
+  // Reports, Find, graphs (Phase 5)
+  report: { component: ReportWindow, title: 'Report', width: 76, height: 40 },
+  modifyreport: { component: ModifyReport, title: 'Modify Report', width: 60 },
+  reportfinder: { component: ReportFinder, title: 'Report Finder', width: 62, height: 30 },
+  memorized: { component: MemorizedList, title: 'Memorized Report List', width: 48, height: 24 },
+  memorize: { component: MemorizeDialog, title: 'Memorize Report', width: 34 },
+  find: { component: FindWindow, title: 'Find', width: 70, height: 36 },
+  salesgraph: { component: SalesGraphWindow, title: 'Sales Graph', width: 76, height: 40 },
+  iegraph: { component: IncomeExpenseGraphWindow, title: 'Income and Expense Graph', width: 70, height: 34 },
 };

@@ -30,6 +30,7 @@ import {
 import { nameQuickFill, termsQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
+import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { openWindow } from './openTxn';
 import { docLabel, openPdf } from './salesDoc';
@@ -533,6 +534,12 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
     print: () => void print(),
     history,
     txnJournal: journal,
+    quickReport: () => {
+      commitActiveField({ quiet: true });
+      const n = formRef.current.customerId;
+      if (n !== null) openQuickReport(desk, { name_id: n });
+      else desk.setStatus('Choose a name first, then press Ctrl+Q for its QuickReport.');
+    },
     confirmClose: () => (loading ? true : askSave(true)),
   });
 

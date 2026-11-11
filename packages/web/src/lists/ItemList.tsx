@@ -6,6 +6,7 @@ import { formatRate } from '../controls/RateField';
 import { useDesktop } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { Indented, ListWindow } from './ListWindow';
+import { openQuickReport } from '../reports/open';
 
 export function ItemList({ winId }: WinProps) {
   const desk = useDesktop();
@@ -42,6 +43,7 @@ export function ItemList({ winId }: WinProps) {
       columns={columns}
       onNew={() => desk.open('item', { id: null })}
       onEdit={(i) => desk.open('item', { id: i.id })}
+      onQuickReport={(i) => openQuickReport(desk, { item_id: i.id })}
     />
   );
 }

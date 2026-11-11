@@ -24,8 +24,6 @@ export async function openRegister(desk: Desktop) {
 }
 
 const NOT_YET: Record<string, string> = {
-  KeyF: 'Find',
-  KeyQ: 'QuickReport',
   KeyY: 'Transaction Journal',
   KeyH: 'Transaction History',
   KeyP: 'Print',
@@ -60,6 +58,13 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
       const d = deskRef.current;
       const ctrl = e.ctrlKey || e.metaKey;
       const code = e.code;
+
+      // F2: Help > About RapidBooks (QuickBooks' product information).
+      if (code === 'F2' && !ctrl && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        d.open('about');
+        return;
+      }
 
       if (ctrl && !e.altKey) {
         if (code === 'F6') {
@@ -102,6 +107,17 @@ export function useGlobalShortcuts(desk: Desktop, menuRef: RefObject<MenuBarHand
         // Ctrl+Y transaction journal, Ctrl+P print: where the active window has them.
         if ((code === 'KeyY' && d.run('txnJournal')) || (code === 'KeyP' && d.run('print'))) {
           e.preventDefault();
+          return;
+        }
+        // Ctrl+F: Find. Ctrl+Q: QuickReport for what the active window has selected.
+        if (code === 'KeyF') {
+          e.preventDefault();
+          d.open('find');
+          return;
+        }
+        if (code === 'KeyQ') {
+          e.preventDefault();
+          if (!d.run('quickReport')) d.setStatus('Ctrl+Q makes a QuickReport from a list, a register or a form with a name.');
           return;
         }
         if (code === 'KeyI') {

@@ -1,0 +1,636 @@
+/* Reports, Find, memorized reports and graphs. Sizes in rem / em so View > Zoom scales them. */
+
+/* ---------- Report, graph and Find windows can be resized by their corner ---------- */
+
+.win:has(> .win-body > .rpt-resizable) {
+  resize: both;
+  overflow: hidden;
+  min-width: 30rem;
+  min-height: 16rem;
+  max-height: calc(100% - 0.25rem);
+}
+
+.rpt-window,
+.rpt-resizable {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---------- The header bar ---------- */
+
+.rpt-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-bottom: 0.375rem;
+  margin-bottom: 0.375rem;
+  border-bottom: var(--px) solid var(--shadow);
+  box-shadow: 0 var(--px) var(--hilite);
+}
+
+.rpt-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.rpt-buttons .btn {
+  min-width: 0;
+  padding: 0.2rem 0.625rem;
+}
+
+.rpt-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 1rem;
+}
+
+.rpt-params > label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+
+.rpt-preset {
+  width: 13rem;
+}
+
+.rpt-enum {
+  width: auto;
+  max-width: 14rem;
+}
+
+.rpt-combo {
+  display: inline-flex;
+  width: 16rem;
+}
+
+.rpt-loading {
+  color: var(--grey-text);
+  min-width: 5rem;
+}
+
+/* ---------- The report page ---------- */
+
+.rpt-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset var(--px) var(--px) var(--dark);
+}
+
+.rpt-stale .rpt-table {
+  color: #505050;
+}
+
+.rpt-titles {
+  text-align: center;
+  padding: 0.5rem 0.75rem 0.375rem;
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+.rpt-company {
+  font-size: 1rem;
+}
+
+.rpt-title {
+  font-size: 1.25rem;
+}
+
+.rpt-subtitle {
+  font-size: 0.9375rem;
+}
+
+.rpt-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-size: 0.9375rem;
+}
+
+.rpt-scroll:focus {
+  outline: var(--px) dotted #000;
+  outline-offset: -0.1875rem;
+}
+
+.rpt-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0 auto 0.75rem;
+}
+
+.rpt-table th,
+.rpt-table td {
+  padding: 0.0625rem 0.5rem;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.rpt-table td {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Column headings: bold, underlined, and kept in view while the report scrolls. */
+.rpt-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--field);
+  font-weight: bold;
+  border-bottom: 0.125rem solid #000;
+  padding-top: 0.25rem;
+}
+
+/* The first column stays in view while a wide report scrolls sideways. */
+.rpt-table th:first-child,
+.rpt-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--field);
+}
+
+.rpt-table thead th:first-child {
+  z-index: 3;
+}
+
+.rpt-header td {
+  font-weight: bold;
+}
+
+.rpt-total td {
+  font-weight: bold;
+}
+
+.rpt-subtotal td.has-v {
+  border-top: var(--px) solid #000;
+}
+
+.rpt-total td.has-v {
+  border-top: 0.1875rem double #000;
+}
+
+.rpt-drill {
+  cursor: zoom-in;
+}
+
+.rpt-drill td {
+  cursor: zoom-in;
+}
+
+.rpt-table tr.sel td {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.rpt-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--grey-text);
+}
+
+/* ---------- Modify Report ---------- */
+
+.mod-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mod-tabs {
+  display: flex;
+  gap: 0.125rem;
+  border-bottom: var(--px) solid var(--shadow);
+}
+
+.mod-tab {
+  font: inherit;
+  padding: 0.25rem 0.875rem;
+  background: var(--face);
+  border: var(--px) solid;
+  border-color: var(--hilite) var(--shadow) transparent var(--hilite);
+  margin-bottom: calc(-1 * var(--px));
+  cursor: default;
+}
+
+.mod-tab.active {
+  background: var(--field);
+  font-weight: bold;
+  border-bottom-color: var(--field);
+}
+
+.mod-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  min-height: 22rem;
+}
+
+.mod-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.mod-row > label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.mod-cols {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.mod-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.mod-side .btn {
+  min-width: 7.5rem;
+}
+
+.checklist {
+  height: 13rem;
+  overflow: auto;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  box-shadow: inset var(--px) var(--px) var(--dark);
+  font-size: 1rem;
+}
+
+.checklist:focus {
+  outline: var(--px) dotted #000;
+  outline-offset: -0.1875rem;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.0625rem 0.375rem;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.checklist-row.hot {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.checklist-row input {
+  margin: 0;
+  pointer-events: none;
+}
+
+.checklist-empty {
+  padding: 0.5rem;
+  color: var(--grey-text);
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+}
+
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.pick .checklist {
+  height: 10rem;
+}
+
+.pick-head {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.pick-head .btn {
+  min-width: 0;
+  padding: 0.125rem 0.5rem;
+}
+
+.pick-count {
+  color: var(--grey-text);
+  font-size: 0.875rem;
+}
+
+/* ---------- Report Finder, memorized reports ---------- */
+
+.finder {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.finder-desc {
+  padding: 0.5rem 0.75rem;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  overflow: auto;
+}
+
+.finder-desc h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.finder-group td {
+  font-weight: bold;
+}
+
+/* ---------- Find ---------- */
+
+.find-form {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  gap: 0.375rem 0.75rem;
+  align-items: center;
+  padding-bottom: 0.5rem;
+}
+
+.find-form > label {
+  text-align: right;
+}
+
+.find-pair {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.find-pair .amount-field {
+  width: 8rem;
+}
+
+.find-more {
+  padding: 0.25rem 0.5rem;
+  margin-top: 0.375rem;
+  background: var(--error-bg);
+  border: var(--px) solid var(--shadow);
+}
+
+/* ---------- Graphs ---------- */
+
+.graph-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+  gap: 0.5rem;
+  background: var(--field);
+  border: var(--px) solid;
+  border-color: var(--shadow) var(--hilite) var(--hilite) var(--shadow);
+  padding: 0.5rem;
+}
+
+.graph-body.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.graph-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.graph-panel h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  text-align: center;
+}
+
+.graph-chart {
+  flex: 1;
+  min-height: 14rem;
+}
+
+.graph-legend {
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.875rem;
+  border-top: var(--px) solid #c0c0c0;
+  margin-top: 0.25rem;
+}
+
+.graph-legend table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.graph-legend td {
+  padding: 0.0625rem 0.375rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.graph-legend tr.zoom td {
+  cursor: zoom-in;
+}
+
+.graph-legend tr.sel td {
+  background: var(--sel);
+  color: var(--sel-text);
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: var(--px) solid #000;
+  vertical-align: -0.125rem;
+}
+
+.graph-hint {
+  color: var(--grey-text);
+  font-size: 0.875rem;
+}
+
+.graph-chart .recharts-rectangle,
+.graph-chart .recharts-sector {
+  cursor: zoom-in;
+}
+
+/* ---------- Printing ----------
+   Only while printWindowOf() has marked <body> with rb-printing and the window to print
+   with rb-print-target: everything else (menu bar, status bar, other windows, message
+   boxes, the window's own title bar and header bar) is left out, black on white. */
+
+@media print {
+  body.rb-printing,
+  body.rb-printing #root,
+  body.rb-printing .app {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Everything outside the desktop: menus, status bar, message boxes, other screens. */
+  body.rb-printing > :not(#root),
+  body.rb-printing #root > :not(.app),
+  body.rb-printing .app > :not(.desktop) {
+    display: none !important;
+  }
+
+  body.rb-printing .desktop {
+    position: static !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Every other window. */
+  body.rb-printing .desktop > :not(.rb-print-target) {
+    display: none !important;
+  }
+
+  body.rb-printing .rb-print-target {
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: visible !important;
+    resize: none !important;
+  }
+
+  body.rb-printing .rb-print-target > .win-title,
+  body.rb-printing .rb-print-target .no-print {
+    display: none !important;
+  }
+
+  body.rb-printing .rb-print-target .win-body,
+  body.rb-printing .rb-print-target .rpt-window,
+  body.rb-printing .rb-print-target .rpt-resizable,
+  body.rb-printing .rb-print-target .rpt-page,
+  body.rb-printing .rb-print-target .rpt-scroll {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.rb-printing .rpt-scroll {
+    outline: none !important;
+  }
+
+  body.rb-printing .rpt-titles {
+    padding: 0 0 0.15in;
+  }
+
+  body.rb-printing .rpt-table {
+    font-size: 9pt;
+    margin: 0 auto;
+    color: #000 !important;
+  }
+
+  /* The column headings repeat at the top of every page. */
+  body.rb-printing .rpt-table thead {
+    display: table-header-group;
+  }
+
+  body.rb-printing .rpt-table th,
+  body.rb-printing .rpt-table td,
+  body.rb-printing .rpt-table th:first-child,
+  body.rb-printing .rpt-table td:first-child {
+    position: static !important;
+    background: #fff !important;
+    color: #000 !important;
+    max-width: none;
+    overflow: visible;
+  }
+
+  body.rb-printing .rpt-table tr {
+    break-inside: avoid;
+  }
+
+  /* Graphs: the panels side by side become one under the other, full width. */
+  body.rb-printing .graph-body {
+    display: block !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.rb-printing .graph-panel {
+    display: block !important;
+    break-inside: avoid;
+    margin-bottom: 0.2in;
+  }
+
+  /* Charts keep the shape they have on screen, scaled to the page width (Recharts draws
+     with a viewBox, so the SVG scales without being redrawn). */
+  body.rb-printing .graph-chart,
+  body.rb-printing .graph-chart .recharts-responsive-container,
+  body.rb-printing .graph-chart .recharts-wrapper {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  body.rb-printing .graph-chart svg.recharts-surface {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 4.5in;
+  }
+
+  body.rb-printing .recharts-tooltip-wrapper,
+  body.rb-printing .graph-hint {
+    display: none !important;
+  }
+
+  body.rb-printing .graph-legend {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body.rb-printing .graph-legend tr.sel td {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}

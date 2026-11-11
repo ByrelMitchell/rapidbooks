@@ -138,6 +138,11 @@ export interface TxnHeaderRow {
   closed: number;
   period_from: string;
   period_to: string;
+  // History import (migration 005); see ledger/posting.ts importWriter.
+  import_locked?: number;
+  import_note?: string;
+  qb_type?: string;
+  qb_trans_no?: string;
 }
 
 export function txnRow(db: DB, id: number): TxnHeaderRow | undefined {

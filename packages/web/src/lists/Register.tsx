@@ -5,6 +5,7 @@ import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { openTxn as openTxnWindow } from '../forms/openTxn';
+import { openQuickReport } from '../reports/open';
 
 export function Register({ winId, props }: WinProps) {
   const accountId = props.accountId as number;
@@ -68,6 +69,7 @@ export function Register({ winId, props }: WinProps) {
     new: newEntry,
     edit: () => openTxn(current),
     delete: () => void deleteTxn(),
+    quickReport: () => openQuickReport(desk, { account_id: accountId }),
   });
 
   const isBank = account?.type === 'BANK';

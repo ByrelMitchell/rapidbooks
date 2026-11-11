@@ -4,6 +4,7 @@ import { api, errorMessage, useData } from '../api';
 import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
+import { openQuickReport } from '../reports/open';
 
 /** Balance including subaccounts, as the QuickBooks chart of accounts shows it. */
 function rolledUp(accounts: Account[]): Map<number, number> {
@@ -36,8 +37,9 @@ export function ChartOfAccounts({ winId }: WinProps) {
 
   const openRegister = (a: Account | null) => {
     if (!a) return;
+    // Income and expense accounts have no register: Enter opens their QuickReport, as in QuickBooks.
     if (accountType(a.type).balanceSheet) desk.open('register', { accountId: a.id });
-    else desk.setStatus('QuickReport is not available yet.');
+    else openQuickReport(desk, { account_id: a.id });
   };
 
   const cmds = {
@@ -65,6 +67,7 @@ export function ChartOfAccounts({ winId }: WinProps) {
     edit: cmds.edit,
     delete: () => void cmds.delete(),
     register: cmds.register,
+    quickReport: current ? () => openQuickReport(desk, { account_id: current.id }) : undefined,
   });
 
   const columns: Column<Account>[] = [
@@ -117,6 +120,9 @@ export function ChartOfAccounts({ winId }: WinProps) {
           Delete
         </button>
         <span className="spacer" />
+        <button type="button" className="btn" disabled={!current} onClick={() => current && openQuickReport(desk, { account_id: current.id })} title="Ctrl+Q">
+          QuickReport
+        </button>
         <button type="button" className="btn" disabled={!current} onClick={cmds.register}>
           Use Register
         </button>

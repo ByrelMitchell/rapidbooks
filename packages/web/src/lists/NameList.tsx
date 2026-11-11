@@ -4,6 +4,7 @@ import { useDesktop } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { Indented, ListWindow } from './ListWindow';
 import { NAME_WINDOWS } from './quickAdd';
+import { openQuickReport } from '../reports/open';
 
 const firstLine = (s: string) => s.split('\n', 1)[0];
 
@@ -56,6 +57,7 @@ export function NameList({ winId, kind }: WinProps & { kind: NameKind }) {
       newLabel={k.newLabel}
       onNew={() => desk.open(dialog, { id: null })}
       onEdit={(n) => desk.open(dialog, { id: n.id })}
+      onQuickReport={(n) => openQuickReport(desk, { name_id: n.id })}
       extraButtons={
         kind === 'customer'
           ? (cur) => (

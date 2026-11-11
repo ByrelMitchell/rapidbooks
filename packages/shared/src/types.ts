@@ -417,6 +417,18 @@ export interface Txn {
   memo: string;
   version: number;
   splits: Split[];
+  /**
+   * History import. import_locked: imported "as posted" from QuickBooks; show it as a
+   * journal-style view of its splits (header fields read-only), never through its form.
+   * It is saved only as a journal entry: PUT /api/txns/:id with type 'GENJRNL', the
+   * splits, date, num, name_id, memo and version (the transaction keeps its own type).
+   * import_note says why it is locked. qb_type / qb_trans_no: QuickBooks' type name and
+   * Trans # ('' when entered in RapidBooks). Absent on databases without the import.
+   */
+  import_locked?: boolean;
+  import_note?: string;
+  qb_type?: string;
+  qb_trans_no?: string;
 }
 
 /** A stored document line (invoice, credit memo or deposit). */

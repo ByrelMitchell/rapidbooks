@@ -1,4 +1,7 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react';
+import { useReportsMenu } from '../reports/reportsMenu';
+import { logOff } from '../admin/logOff';
+import { sessionState, useSession } from '../admin/session';
 import { Mnemonic, parseMnemonic } from '../util';
 import { isModalOpen, toggleFullScreen, useDesktop, type CommandName, type Desktop } from './desktop';
 import { openRegister } from './shortcuts';
@@ -8,6 +11,8 @@ export interface MenuItem {
   shortcut?: string;
   /** No action = shown disabled (feature not built yet, or nothing to act on). */
   action?: () => void;
+  /** A submenu (one level): Right or Enter opens it, Left or Esc closes it. */
+  items?: MenuEntry[];
 }
 export type MenuEntry = MenuItem | 'sep';
 export interface Menu {
@@ -20,18 +25,21 @@ export interface MenuBarHandle {
   openByLetter: (letter: string) => boolean;
 }
 
-function buildMenus(desk: Desktop): Menu[] {
+function buildMenus(desk: Desktop, reportsMenu: Menu): Menu[] {
   const cmds = desk.commands(desk.activeId);
   const cmd = (name: CommandName) => (cmds[name] ? () => desk.run(name) : undefined);
   return [
     {
       label: '&File',
       items: [
-        { label: '&Back Up...' },
+        { label: '&Back Up...', action: () => desk.open('backup') },
         'sep',
         { label: 'Print &Forms > Invoices...', action: () => desk.open('printforms') },
         { label: 'Print Forms > &Checks...', action: () => desk.open('printchecks') },
         { label: 'Sen&d Forms...', action: () => desk.open('sendforms') },
+        'sep',
+        // Only when a password is set (otherwise there is nothing to log off from).
+        { label: '&Log Off', action: sessionState().authRequired ? () => void logOff(desk) : undefined },
       ],
     },
     {
@@ -41,7 +49,7 @@ function buildMenus(desk: Desktop): Menu[] {
         { label: '&Edit', shortcut: 'Ctrl+E', action: cmd('edit') },
         { label: '&Delete', shortcut: 'Ctrl+D', action: cmd('delete') },
         'sep',
-        { label: '&Find...', shortcut: 'Ctrl+F' },
+        { label: '&Find...', shortcut: 'Ctrl+F', action: () => desk.open('find') },
       ],
     },
     {
@@ -115,15 +123,7 @@ function buildMenus(desk: Desktop): Menu[] {
         { label: 'Use &Register', shortcut: 'Ctrl+R', action: () => openRegister(desk) },
       ],
     },
-    {
-      label: '&Reports',
-      items: [
-        { label: '&Profit && Loss' },
-        { label: '&Sales by Customer' },
-        { label: 'Sales by &Item' },
-        { label: '&Trip Report' },
-      ],
-    },
+    reportsMenu,
     {
       label: '&Window',
       items: [
@@ -148,11 +148,18 @@ function buildMenus(desk: Desktop): Menu[] {
         },
       ],
     },
+    {
+      label: '&Help',
+      items: [{ label: '&About RapidBooks...', shortcut: 'F2', action: () => desk.open('about') }],
+    },
   ];
 }
 
-const enabled = (e: MenuEntry | undefined): e is MenuItem & { action: () => void } =>
-  !!e && e !== 'sep' && !!e.action;
+/** The submenu of an entry, when it has one with something enabled in it. */
+const subOf = (e: MenuEntry | undefined): MenuEntry[] | null =>
+  !!e && e !== 'sep' && !!e.items && e.items.some((x) => x !== 'sep' && !!x.action) ? e.items : null;
+const enabled = (e: MenuEntry | undefined): e is MenuItem =>
+  !!e && e !== 'sep' && (!!e.action || subOf(e) !== null);
 
 function step(items: MenuEntry[], from: number, dir: 1 | -1): number {
   const n = items.length;
@@ -166,24 +173,64 @@ const firstEnabled = (items: MenuEntry[]) => step(items, -1, 1);
 
 export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
   const desk = useDesktop();
-  const menus = buildMenus(desk);
+  useSession(); // re-render when login state changes (File > Log Off)
+  const menus = buildMenus(desk, useReportsMenu(desk));
   const [open, setOpen] = useState<number | null>(null);
   const [item, setItem] = useState(-1);
+  // The open submenu belongs to the hot item `item`; subItem is the hot entry inside it.
+  const [sub, setSub] = useState(false);
+  const [subItem, setSubItem] = useState(-1);
   const barRef = useRef<HTMLDivElement>(null);
+  const subRef = useRef<HTMLDivElement>(null);
 
   const openMenu = (i: number) => {
     setOpen(i);
     setItem(firstEnabled(menus[i].items));
+    setSub(false);
+    setSubItem(-1);
   };
   const closeMenu = () => {
     setOpen(null);
     setItem(-1);
+    setSub(false);
+    setSubItem(-1);
   };
-  const activate = (entry: MenuEntry | undefined) => {
+  /** Make entry j of the open menu hot and open its submenu. */
+  const openSub = (j: number, entries: MenuEntry[]) => {
+    setItem(j);
+    setSub(true);
+    setSubItem(firstEnabled(entries));
+  };
+  const closeSub = () => {
+    setSub(false);
+    setSubItem(-1);
+  };
+  /** Choose an entry: run its action, or open its submenu when it has one (entry j of the open menu). */
+  const activate = (entry: MenuEntry | undefined, j = -1) => {
     if (!enabled(entry)) return;
+    const s = subOf(entry);
+    if (s) {
+      if (j >= 0) openSub(j, s);
+      return;
+    }
     closeMenu();
-    entry.action();
+    entry.action?.();
   };
+  const byMnemonic = (entries: MenuEntry[], k: string) =>
+    entries.findIndex((x) => x !== 'sep' && enabled(x) && parseMnemonic(x.label).key === k);
+
+  // Keep the open submenu on screen: to the left of its menu when there is no room on the
+  // right, and moved up when it would run off the bottom.
+  useLayoutEffect(() => {
+    const el = subRef.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+    const pr = parent.getBoundingClientRect();
+    el.classList.toggle('flip', pr.right + el.offsetWidth > window.innerWidth && pr.left - el.offsetWidth >= 0);
+    el.style.top = '';
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight) el.style.top = `${-Math.min(r.top, r.bottom - window.innerHeight + 4)}px`;
+  });
   const indexByLetter = (letter: string) => menus.findIndex((m) => parseMnemonic(m.label).key === letter);
 
   useImperativeHandle(ref, () => ({
@@ -208,18 +255,41 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
       }
       e.preventDefault();
       e.stopPropagation();
+      const altLetter = e.altKey && !e.ctrlKey && /^Key[A-Z]$/.test(e.code);
+      const plainChar = !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1;
+      const subItems = sub ? subOf(items[item]) : null;
+      if (subItems) {
+        // In the submenu: Left / Esc go back to the menu, Right moves on to the next menu.
+        if (e.key === 'Escape' || e.key === 'ArrowLeft') closeSub();
+        else if (e.key === 'ArrowRight') openMenu((open + 1) % menus.length);
+        else if (e.key === 'ArrowDown') setSubItem(step(subItems, subItem, 1));
+        else if (e.key === 'ArrowUp') setSubItem(step(subItems, subItem < 0 ? subItems.length : subItem, -1));
+        else if (e.key === 'Enter') activate(subItems[subItem]);
+        else if (altLetter) {
+          const i = indexByLetter(e.code.slice(3).toLowerCase());
+          if (i >= 0) openMenu(i);
+        } else if (plainChar) {
+          const k = byMnemonic(subItems, e.key.toLowerCase());
+          if (k >= 0) activate(subItems[k]);
+        }
+        return;
+      }
       if (e.key === 'Escape') closeMenu();
       else if (e.key === 'ArrowLeft') openMenu((open - 1 + menus.length) % menus.length);
-      else if (e.key === 'ArrowRight') openMenu((open + 1) % menus.length);
-      else if (e.key === 'ArrowDown') setItem(step(items, item, 1));
+      else if (e.key === 'ArrowRight') {
+        // Right opens the hot item's submenu; on an ordinary item it moves to the next menu.
+        const s = subOf(items[item]);
+        if (s) openSub(item, s);
+        else openMenu((open + 1) % menus.length);
+      } else if (e.key === 'ArrowDown') setItem(step(items, item, 1));
       else if (e.key === 'ArrowUp') setItem(step(items, item < 0 ? items.length : item, -1));
-      else if (e.key === 'Enter') activate(items[item]);
-      else if (e.altKey && !e.ctrlKey && /^Key[A-Z]$/.test(e.code)) {
+      else if (e.key === 'Enter') activate(items[item], item);
+      else if (altLetter) {
         const i = indexByLetter(e.code.slice(3).toLowerCase());
         if (i >= 0) openMenu(i);
-      } else if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-        const k = e.key.toLowerCase();
-        activate(items.find((x) => x !== 'sep' && parseMnemonic(x.label).key === k));
+      } else if (plainChar) {
+        const j = byMnemonic(items, e.key.toLowerCase());
+        if (j >= 0) activate(items[j], j);
       }
     };
     const onPointer = (e: PointerEvent) => {
@@ -250,25 +320,62 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
           </div>
           {open === i && (
             <div className="menu-drop" role="menu">
-              {m.items.map((x, j) =>
-                x === 'sep' ? (
-                  <div key={`sep${j}`} className="menu-sep" />
-                ) : (
+              {m.items.map((x, j) => {
+                if (x === 'sep') return <div key={`sep${j}`} className="menu-sep" />;
+                const on = enabled(x);
+                const s = subOf(x);
+                return (
                   <div
                     key={`${j}${x.label}`}
                     role="menuitem"
-                    aria-disabled={!x.action}
-                    className={`menu-item${x.action ? '' : ' disabled'}${item === j ? ' hot' : ''}`}
-                    onMouseEnter={() => x.action && setItem(j)}
-                    onClick={() => activate(x)}
+                    aria-disabled={!on}
+                    aria-haspopup={x.items ? 'menu' : undefined}
+                    aria-expanded={x.items ? sub && item === j : undefined}
+                    className={`menu-item${on ? '' : ' disabled'}${item === j ? ' hot' : ''}${x.items ? ' has-sub' : ''}`}
+                    onMouseEnter={() => {
+                      if (!on) return;
+                      if (s) openSub(j, s);
+                      else {
+                        setItem(j);
+                        closeSub();
+                      }
+                    }}
+                    onClick={() => activate(x, j)}
                   >
                     <span className="menu-label">
                       <Mnemonic label={x.label} />
                     </span>
-                    <span className="menu-key">{x.shortcut ?? ''}</span>
+                    <span className="menu-key">{x.items ? '▸' : (x.shortcut ?? '')}</span>
+                    {s && sub && item === j && (
+                      <div ref={subRef} className="menu-drop menu-sub" role="menu">
+                        {s.map((y, k) =>
+                          y === 'sep' ? (
+                            <div key={`sep${k}`} className="menu-sep" />
+                          ) : (
+                            <div
+                              key={`${k}${y.label}`}
+                              role="menuitem"
+                              aria-disabled={!y.action}
+                              className={`menu-item${y.action ? '' : ' disabled'}${subItem === k ? ' hot' : ''}`}
+                              onMouseEnter={() => y.action && setSubItem(k)}
+                              onClick={(e) => {
+                                // Not also a click on the parent entry, which would reopen this submenu.
+                                e.stopPropagation();
+                                activate(y);
+                              }}
+                            >
+                              <span className="menu-label">
+                                <Mnemonic label={y.label} />
+                              </span>
+                              <span className="menu-key">{y.shortcut ?? ''}</span>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    )}
                   </div>
-                ),
-              )}
+                );
+              })}
             </div>
           )}
         </div>

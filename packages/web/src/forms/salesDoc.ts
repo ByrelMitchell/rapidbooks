@@ -46,3 +46,12 @@ export const docLabel = (type: string, num: string) =>
 export function openPdf(id: number): boolean {
   return window.open(`/api/txns/${id}/pdf`, '_blank') !== null;
 }
+
+/** Open several saved forms as ONE combined PDF in a single tab. False when the browser blocked the tab. */
+export function openPdfs(ids: number[]): boolean {
+  if (ids.length === 1) return openPdf(ids[0]);
+  return window.open(`/api/txns/pdf?ids=${ids.join(',')}`, '_blank') !== null;
+}
+
+/** The status-bar line when the browser blocked the PDF tab. */
+export const PDF_BLOCKED = 'The browser blocked the PDF tab. Allow pop-ups for RapidBooks, then print again.';

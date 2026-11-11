@@ -7,6 +7,7 @@ import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { bankOptions, EndingBalance, firstBankId, nextCheckNum } from './checkShared';
 import { openTxn } from './openTxn';
+import { openPdfs, PDF_BLOCKED } from './salesDoc';
 import './sales.css';
 import './banking.css';
 
@@ -103,16 +104,10 @@ export function PrintChecks({ winId }: WinProps) {
         return;
       }
       desk.refresh();
-      let blocked = 0;
-      for (const a of assigned) if (window.open(`/api/txns/${a.id}/pdf`, '_blank') === null) blocked++;
       const range = assigned.length === 1 ? `Check ${assigned[0].num}` : `Checks ${assigned[0].num} to ${assigned[assigned.length - 1].num}`;
-      desk.setStatus(`${range} numbered and opened to print.`);
-      if (blocked > 0) {
-        await desk.alert(
-          `The checks are numbered, but the browser blocked ${blocked} of the ${assigned.length} PDF tabs. ` +
-            'Allow pop-ups for RapidBooks in the browser, then open the blocked checks from the register and print them (Ctrl+P).',
-        );
-      }
+      // All the check records in one combined PDF, in one tab.
+      if (openPdfs(assigned.map((a) => a.id))) desk.setStatus(`${range} numbered and opened to print.`);
+      else desk.setStatus(`${range} numbered. ${PDF_BLOCKED}`);
     } finally {
       busy.current = false;
     }

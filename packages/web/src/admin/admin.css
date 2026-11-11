@@ -1,0 +1,125 @@
+/* Login screen, File > Back Up, Help > About, the status-bar backup warning. Sizes in rem. */
+
+/* While the login screen is up the windows are hidden (they keep their contents). */
+body.rb-locked .desktop {
+  visibility: hidden;
+}
+
+.login-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 4999; /* below .modal-layer (5000), so a message box can still show */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: var(--desk);
+}
+
+.win.login-box {
+  position: relative;
+  width: 30rem;
+  max-width: 100%;
+}
+
+.login-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem 0.75rem;
+}
+
+.login-brand,
+.about-brand {
+  font-size: 1.75rem;
+  font-weight: bold;
+  font-style: italic;
+  color: var(--navy);
+}
+
+.login-text {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.login-label {
+  font-size: 1.125rem;
+}
+
+.field.login-field {
+  font-size: 1.5rem;
+  padding: 0.375rem 0.5rem;
+  width: 100%;
+}
+
+.login-caps {
+  min-height: 1.25rem;
+  color: var(--error);
+  font-weight: bold;
+}
+
+.status-backup {
+  background: var(--error-bg);
+  color: var(--error);
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.backup-window {
+  gap: 0.25rem;
+}
+
+.backup-info {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.375rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.backup-k {
+  text-align: right;
+}
+
+.backup-v {
+  font-weight: bold;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.backup-v.backup-bad {
+  color: var(--error);
+}
+
+.backup-path {
+  font-weight: normal;
+  font-family: 'Courier New', monospace;
+}
+
+.msg-strip.backup-ok {
+  background: var(--light);
+}
+
+.backup-list-label {
+  margin-top: 0.5rem;
+}
+
+.about-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.75rem 0;
+}
+
+.about-row {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.75rem;
+}
+
+.about-k {
+  text-align: right;
+}
+
+.about-v {
+  overflow-wrap: anywhere;
+}

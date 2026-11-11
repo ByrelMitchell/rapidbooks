@@ -30,6 +30,7 @@ import {
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
+import { openQuickReport } from '../reports/open';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
 import {
   bankOptions,
@@ -533,6 +534,12 @@ export function WriteChecks({ winId, props }: WinProps) {
     register: openRegister,
     print: () => void print(),
     txnJournal: journal,
+    quickReport: () => {
+      commitActiveField({ quiet: true });
+      const n = formRef.current.payeeId;
+      if (n !== null) openQuickReport(desk, { name_id: n });
+      else desk.setStatus('Choose a name first, then press Ctrl+Q for its QuickReport.');
+    },
     confirmClose: () => (loading ? true : askSave(true)),
   });
 

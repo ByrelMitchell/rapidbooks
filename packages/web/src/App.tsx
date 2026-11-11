@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { BackupWarning } from './admin/BackupWarning';
+import { LoginScreen } from './admin/LoginScreen';
 import { MenuBar, type MenuBarHandle } from './shell/MenuBar';
 import { DesktopProvider, useDesktop } from './shell/desktop';
 import { registry } from './shell/registry';
@@ -52,8 +54,10 @@ function Shell() {
       </div>
       <div className="statusbar" role="status">
         <span className="status-msg">{desk.status}</span>
+        <BackupWarning />
         <span className="status-zoom">{desk.zoom}%</span>
       </div>
+      <LoginScreen />
     </div>
   );
 }

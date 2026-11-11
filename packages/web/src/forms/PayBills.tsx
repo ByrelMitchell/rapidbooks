@@ -32,7 +32,7 @@ import {
   type PayRow,
 } from './payBillsMath';
 import type { BillDiscountResult } from './PurchaseDialogs';
-import { openPdf } from './salesDoc';
+import { openPdfs, PDF_BLOCKED } from './salesDoc';
 import './receivables.css';
 import './purchases.css';
 
@@ -267,8 +267,7 @@ export function PayBills({ winId }: WinProps) {
           icon: 'info',
         });
         if (print) {
-          const blocked = res.payments.filter((p) => !openPdf(p.id)).length;
-          if (blocked) desk.setStatus('The browser blocked some of the new tabs. Allow pop-ups for RapidBooks, then print them from the register.');
+          if (!openPdfs(res.payments.map((p) => p.id))) desk.setStatus(PDF_BLOCKED);
         }
       }
       if (mode === 'close') desk.close(winId);
