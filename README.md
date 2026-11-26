@@ -33,6 +33,7 @@ See the docs for the rest:
 - `docs/DEPLOY.md`: installing on the Linux server, the password, HTTPS, the client launcher, updates, restore.
 - `docs/IMPORT.md`: exporting from QuickBooks and importing lists and full history, with the reconciliation report.
 - `docs/EMAIL.md`: SMTP settings for e-mailing invoices.
+- `docs/DOCKER.md`: running in Docker on an older Linux (Mint 19, Ubuntu 18.04) whose Node is too old.
 - `docs/REMOTE-DEMO.md`: letting someone elsewhere try a demo over the internet from a Windows PC (Cloudflare quick tunnel).
 - `docs/PLAN.md`: the original design.
 

@@ -1,0 +1,11 @@
+.git
+node_modules
+packages/*/node_modules
+packages/web/dist
+data
+config
+reference
+screenshots
+*.db
+*.db-wal
+*.db-shm
