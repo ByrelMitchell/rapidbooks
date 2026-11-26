@@ -46,8 +46,17 @@ run_tool() { docker run --rm -e TZ="$TZ_NAME" -v "$DATA_DIR:/data" "$@"; }
 REPO="${RAPIDBOOKS_REPO:-ByrelMitchell/rapidbooks}"
 DIST="$SRC_DIR/packages/web/dist"
 rm -rf "$DIST"
-SHA="$(git -c safe.directory="$SRC_DIR" -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
-if [ -n "$SHA" ]; then
+# Ask git as the folder's owner: run as root, git refuses another user's repository.
+SHA=""
+if [ -d "$SRC_DIR/.git" ]; then
+  OWNER="$(stat -c %U "$SRC_DIR")"
+  SHA="$(sudo -u "$OWNER" git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
+  [ -n "$SHA" ] || SHA="$(git -c safe.directory='*' -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
+fi
+if [ -z "$SHA" ]; then
+  say "Could not tell which commit this folder is, so the web app will be built here."
+  echo "If that fails with \"Illegal instruction\", use a git clone of the repository."
+else
   say "Downloading the web app built for commit ${SHA:0:7}"
   URL="https://github.com/$REPO/releases/download/web-dist/web-dist-$SHA.tar.gz"
   if curl -fsSL "$URL" -o /tmp/rapidbooks-web-dist.tgz; then
