@@ -40,6 +40,27 @@ TZ_NAME="$(cat /etc/timezone 2>/dev/null || true)"
 TZ_NAME="${TZ_NAME:-$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)}"
 run_tool() { docker run --rm -e TZ="$TZ_NAME" -v "$DATA_DIR:/data" "$@"; }
 
+# The web app is built by GitHub for every commit (.github/workflows/web-dist.yml):
+# some older CPUs cannot run Vite's bundler ("Illegal instruction"). Use that build when
+# there is one for this exact commit; otherwise build it in the image.
+REPO="${RAPIDBOOKS_REPO:-ByrelMitchell/rapidbooks}"
+DIST="$SRC_DIR/packages/web/dist"
+rm -rf "$DIST"
+SHA="$(git -c safe.directory="$SRC_DIR" -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$SHA" ]; then
+  say "Downloading the web app built for commit ${SHA:0:7}"
+  URL="https://github.com/$REPO/releases/download/web-dist/web-dist-$SHA.tar.gz"
+  if curl -fsSL "$URL" -o /tmp/rapidbooks-web-dist.tgz; then
+    mkdir -p "$DIST" && tar -xzf /tmp/rapidbooks-web-dist.tgz -C "$SRC_DIR/packages/web"
+    rm -f /tmp/rapidbooks-web-dist.tgz
+    echo "Got it."
+  else
+    echo "Not there (GitHub may still be building it, a few minutes after a push)."
+    echo "Building it here instead. If that fails with \"Illegal instruction\", wait a few"
+    echo "minutes and run this script again."
+  fi
+fi
+
 say "Building the RapidBooks image (the first time takes a few minutes)"
 docker build -t "$IMAGE" "$SRC_DIR"
 

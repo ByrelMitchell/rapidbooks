@@ -12,8 +12,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .
-# Dev dependencies are needed at run time too (tsx runs the server).
-RUN npm ci --no-audit --no-fund && npm run build
+# Dev dependencies are needed at run time too (tsx runs the server). If the web app was
+# already built (docker-install.sh downloads it from GitHub, for CPUs that cannot run
+# Vite's native bundler), it is used as it is.
+RUN npm ci --no-audit --no-fund \
+ && if [ -f packages/web/dist/index.html ]; then echo "Using the prebuilt web app"; else npm run build; fi
 
 FROM node:24-bookworm-slim
 WORKDIR /app

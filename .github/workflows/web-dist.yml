@@ -1,0 +1,41 @@
+# Builds the web app on every push to master and attaches it to the "web-dist" release
+# as web-dist-<commit>.tar.gz. deploy/docker-install.sh downloads it, so machines whose
+# CPU cannot run Vite's native bundler (it dies with "Illegal instruction") never build.
+name: Web app build
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: web-dist
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: tar -czf "web-dist-${GITHUB_SHA}.tar.gz" -C packages/web dist
+      - name: Upload to the web-dist release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view web-dist >/dev/null 2>&1 || \
+            gh release create web-dist --prerelease --title "Built web app" \
+              --notes "Built automatically from master; downloaded by deploy/docker-install.sh."
+          gh release upload web-dist "web-dist-${GITHUB_SHA}.tar.gz" --clobber
+          # Keep the 15 newest builds.
+          gh release view web-dist --json assets \
+            -q '.assets | sort_by(.createdAt) | reverse | .[15:] | .[].name' \
+            | xargs -r -n1 gh release delete-asset web-dist -y

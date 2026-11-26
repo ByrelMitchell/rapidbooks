@@ -1,7 +1,6 @@
 .git
 node_modules
 packages/*/node_modules
-packages/web/dist
 data
 config
 reference
