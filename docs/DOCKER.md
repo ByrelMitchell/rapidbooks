@@ -5,6 +5,12 @@ Linux Mint 19, Ubuntu 18.04 and similar (Node 18+ needs glibc 2.28; these have 2
 The container brings its own Node 24, so the age of the system does not matter. 64-bit
 (x86_64) only. On a current Linux, use the normal install in `docs/DEPLOY.md` instead.
 
+**Tested:** installed and running on Linux Mint 19 (Docker from `docker.io`) on an AMD
+FX-8150, November 2026. That CPU has no AVX2, so Vite's bundler cannot run on it
+("Illegal instruction"); the script downloads the web app that GitHub builds for each
+commit (`.github/workflows/web-dist.yml`) instead of building it there. That download
+needs a git clone, not a ZIP, and the workflow to have finished for the commit.
+
 ## Install
 
 ```
