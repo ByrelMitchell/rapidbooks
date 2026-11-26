@@ -6,7 +6,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type DB } from '../src/db';
 import { runHistory } from '../src/import/cli';
 import { importHistory, type HistoryResult } from '../src/import/history';
-import { parseJournal } from '../src/import/journal';
+import { itemName, parseJournal } from '../src/import/journal';
 import { reconcile } from '../src/import/reconcile';
 import { decodeText, parseAmount, parsePeriodHeader, parseQbDate, tokenize } from '../src/import/table';
 import { getTxn, saveTxn } from '../src/ledger/posting';
@@ -92,6 +92,18 @@ describe('reading report exports', () => {
     expect(a.txns[3].rows[0].memo).toBe('Rush job, per "PO"\nship Friday');
     // Parenthesised / trailing-minus negative credit = a debit.
     expect(a.txns[3].rows[4].amount).toBe(5000);
+  });
+
+  it('takes the item name out of QuickBooks 2013 "Name (Description)" item cells', () => {
+    expect(itemName('Shims - 1/16 (1/16"  shims)', '1/16"  shims')).toBe('Shims - 1/16');
+    expect(itemName('Andre:lg ring ( Large Ring 934c)', 'Large Ring 934c')).toBe('Andre:lg ring');
+    expect(itemName('Hunter:Crank Arm (Crank Arm P/N 025-006 (in two boxes)  )', 'Crank Arm P/N 025-006 (in two boxes)')).toBe('Hunter:Crank Arm');
+    expect(itemName('(Deposit)', 'Deposit')).toBe('');
+    expect(itemName('block (2 x 2.25 x 1.125 thick block with 1.3385" bore', '2 x 2.25 x 1.125 thick block with 1.3385" bore x 15/16 deep')).toBe('block');
+    // Not followed by its description: left alone.
+    expect(itemName('Collet (5C)', '')).toBe('Collet (5C)');
+    expect(itemName('Collet (5C)', 'Steel collet')).toBe('Collet (5C)');
+    expect(itemName('Andre', '')).toBe('Andre');
   });
 });
 

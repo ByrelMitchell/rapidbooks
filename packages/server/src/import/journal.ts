@@ -51,6 +51,23 @@ export interface ParsedJournal {
   warnings: string[];
 }
 
+// QuickBooks 2013 writes the Item column as "Name (Description)", or "(Description)"
+// for a line with no item; long values may be cut off, closing parenthesis included.
+// Return the item name alone: the text before the "(" whose remainder is the row's
+// Item Description (spacing ignored). Without a matching description, unchanged.
+export function itemName(item: string, desc: string): string {
+  const ws = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const d = ws(desc);
+  if (d === '') return item;
+  for (let i = item.indexOf('('); i >= 0; i = item.indexOf('(', i + 1)) {
+    let rest = ws(item.slice(i + 1));
+    if (rest.endsWith(')') && ws(rest.slice(0, -1)) === d) return item.slice(0, i).trim();
+    rest = rest.replace(/\.{3}$/, '').trim();
+    if (rest.length >= 10 && !item.trimEnd().endsWith(')') && d.startsWith(rest)) return item.slice(0, i).trim();
+  }
+  return item;
+}
+
 export function cleanAccountName(s: string): string {
   return s
     .split(':')
@@ -187,7 +204,7 @@ export function parseJournal(data: Uint8Array | string): ParsedJournal {
       name: get(cells, 'name'),
       memo: getText(cells, 'memo'),
       cleared: !NOT_CLEARED.has(get(cells, 'clr').toLowerCase()),
-      item: get(cells, 'item'),
+      item: itemName(get(cells, 'item'), getText(cells, 'itemDesc')),
       itemDesc: getText(cells, 'itemDesc'),
       qty: qty ? qty.value : null,
       price: parseNumber(get(cells, 'price')),
