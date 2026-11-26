@@ -68,21 +68,25 @@ const KIND_TEXT: Record<NameKind, { label: string; nameLabel: string; inactive: 
 
 type Tab2013 = 'address' | 'payment' | 'tax' | 'account' | 'additional' | 'job';
 
-/** The tabs down the left of QuickBooks 2013's New Customer and New Vendor windows (Alt+underlined letter). */
+/**
+ * The tabs down the left of QuickBooks 2013's New Customer and New Vendor windows (Alt+underlined
+ * letter). No tab takes S or N: Alt+S is OK (save and close) and Alt+N saves and starts a new one,
+ * as in every other record dialog.
+ */
 const TABS_2013: Record<'customer' | 'vendor', { id: Tab2013; label: string }[]> = {
   customer: [
     { id: 'address', label: 'Address &Info' },
     { id: 'payment', label: '&Payment Settings' },
     { id: 'tax', label: 'Sales &Tax Settings' },
-    { id: 'additional', label: 'Additio&nal Info' },
+    { id: 'additional', label: '&Additional Info' },
     { id: 'job', label: '&Job Info' },
   ],
   vendor: [
     { id: 'address', label: 'Address &Info' },
     { id: 'payment', label: '&Payment Settings' },
     { id: 'tax', label: '&Tax Settings' },
-    { id: 'account', label: 'Account Setting&s' },
-    { id: 'additional', label: 'Additio&nal Info' },
+    { id: 'account', label: 'A&ccount Settings' },
+    { id: 'additional', label: '&Additional Info' },
   ],
 };
 

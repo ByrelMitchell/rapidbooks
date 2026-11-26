@@ -158,7 +158,7 @@ interface Props<T extends ListRow> {
   onDuplicate?: (row: T) => void;
   /** Item > Make Item Inactive / Active: save the row with its inactive flag changed. */
   setInactive?: (row: T, inactive: boolean) => Promise<void>;
-  /** "Items" in "Show Inactive Items" (default: the noun + s). */
+  /** "Items" in "Show Inactive Items" (default: the noun in capitals, + s unless it ends in s). */
   plural?: string;
   /** The Item List's search bar: does the row match the text? */
   matches?: (row: T, text: string) => boolean;
@@ -211,7 +211,9 @@ export function ListWindow<T extends ListRow>(p: Props<T>) {
   useWindowCommands(p.winId, { new: p.onNew, edit, delete: () => void remove(), quickReport });
 
   const columns = includeInactive ? [inactiveMark<T>(), ...p.columns] : p.columns;
-  const noun = p.noun.replace(/:.*/, '').replace(/^./, (c) => c.toUpperCase());
+  // "payroll item" -> "Payroll Item"; "terms" is already plural.
+  const noun = p.noun.replace(/:.*/, '').replace(/\b\w/g, (c) => c.toUpperCase());
+  const plural = p.plural ?? (noun.endsWith('s') ? noun : `${noun}s`);
   const toggleInactive = async () => {
     const row = current;
     if (!row || !p.setInactive) return;
@@ -237,7 +239,7 @@ export function ListWindow<T extends ListRow>(p: Props<T>) {
           ? [{ label: `Make ${noun} ${current?.inactive ? 'Active' : 'Inactive'}`, action: current ? () => void toggleInactive() : undefined }]
           : []),
         {
-          label: `Show Inactive ${p.plural ?? `${noun}s`}`,
+          label: `Show Inactive ${plural}`,
           checked: includeInactive,
           action: () => setIncludeInactive(!includeInactive),
         },

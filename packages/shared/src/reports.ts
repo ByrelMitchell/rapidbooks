@@ -231,7 +231,10 @@ export interface FindRow {
   memo: string;
   amount: number; // cents: the transaction total
   due_date: string; // invoices and bills; '' otherwise
-  /** Cents still open: an invoice's or bill's unpaid amount, a credit's or payment's unapplied amount; null for other types. */
+  /**
+   * Cents still open: an invoice's or bill's unpaid amount, a credit's or payment's unapplied amount;
+   * null for other types, and for every row unless asked for (with_open=1, or a status filter).
+   */
   open_balance: number | null;
 }
 

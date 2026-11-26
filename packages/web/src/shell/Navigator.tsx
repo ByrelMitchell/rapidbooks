@@ -10,8 +10,11 @@ import type { WinProps } from './registry';
  * Employees panels with the day's work drawn as a flow on the left, Company and Banking on
  * the right. Coordinates are in the screenshot's pixels (the diagram is 1856 x 874) and are
  * turned into percentages, so the picture keeps its shape at any window size.
- * Steps her QuickBooks shows that RapidBooks has no window for (Estimates, Accept Credit
- * Cards, payroll setup, Enter Time, Reconcile...) are left out, with their lines.
+ * Steps her QuickBooks shows that RapidBooks has not got (Estimates, Accept Credit Cards,
+ * Enter Time, Reconcile...) are shown greyed out; their tooltip says so. Statements is the
+ * entry QuickBooks adds when statements are turned on. Her Home page has no Transfer Funds
+ * or reports: those are on the Banking and Reports menus and the icon bar. The Intuit service
+ * links (Loan Finder, Web and Mobile Apps) are left out.
  */
 
 const W = 1856;
@@ -42,10 +45,13 @@ interface Step {
   y: number;
   icon: IconName;
   label: string;
-  /** Tooltip: what it opens and the keys for it. */
+  /** Tooltip: what it opens and the keys for it (or, when it is not implemented, its name). */
   title: string;
-  run: (d: Desktop) => void;
+  /** None: RapidBooks has not got this; the step is greyed out. */
+  run?: (d: Desktop) => void;
 }
+
+const notImplemented = (what: string) => `${what} is not implemented in RapidBooks. If you would like it, contact the developer.`;
 
 const STEPS: Step[] = [
   // Vendors
@@ -55,23 +61,20 @@ const STEPS: Step[] = [
     y: 55,
     icon: 'items',
     label: 'Receive\nInventory',
-    title: 'Enter Bills: choose the vendor, then the open purchase order (Alt+O, E)',
+    // QuickBooks' "Receive Inventory with Bill" is Enter Bills against a purchase order; receiving without a bill is not implemented.
+    title: 'Receive Inventory with Bill: Enter Bills, then receive against the vendor\'s open purchase orders (Alt+O, E). Receiving inventory without a bill is not implemented.',
     run: (d) => d.open('bill', { id: null }),
   },
-  {
-    x: 895,
-    y: 55,
-    icon: 'bill',
-    label: 'Enter Bills\nAgainst\nInventory',
-    title: 'Enter Bills: choose the vendor, then the open purchase order (Alt+O, E)',
-    run: (d) => d.open('bill', { id: null }),
-  },
+  { x: 895, y: 55, icon: 'bill', label: 'Enter Bills\nAgainst\nInventory', title: 'Enter Bills Against Inventory (item receipts)' },
   { x: 371, y: 179, icon: 'bill', label: 'Enter Bills', title: 'Enter Bills (Alt+O, E)', run: (d) => d.open('bill', { id: null }) },
   { x: 1251, y: 179, icon: 'paybills', label: 'Pay Bills', title: 'Pay Bills (Alt+O, B)', run: (d) => d.open('paybills') },
   // Customers
+  { x: 706, y: 341, icon: 'payment', label: 'Accept\nCredit Cards', title: 'Accept Credit Cards' },
+  { x: 173, y: 452, icon: 'statement', label: 'Estimates', title: 'Estimates' },
   { x: 371, y: 452, icon: 'invoice', label: 'Create\nInvoices', title: 'Create Invoices (Ctrl+I)', run: (d) => d.open('invoice', { id: null }) },
   { x: 947, y: 452, icon: 'payment', label: 'Receive\nPayments', title: 'Receive Payments (Alt+U, R)', run: (d) => d.open('payment', { id: null }) },
   { x: 661, y: 567, icon: 'finance', label: 'Finance\nCharges', title: 'Assess Finance Charges (Alt+U, C)', run: (d) => d.open('financecharges') },
+  { x: 947, y: 567, icon: 'statement', label: 'Statements', title: 'Create Statements (Alt+U, S)', run: (d) => d.open('statements') },
   {
     x: 1252,
     y: 567,
@@ -81,15 +84,23 @@ const STEPS: Step[] = [
     run: (d) => d.open('creditmemo', { id: null }),
   },
   // Employees
-  { x: 631, y: 730, icon: 'employees', label: 'Pay\nEmployees', title: 'Enter Paycheck (Alt+Y, P)', run: (d) => d.open('paycheck', { id: null }) },
+  { x: 175, y: 731, icon: 'employees', label: 'Turn On\nPayroll', title: 'Payroll service setup' },
+  { x: 371, y: 731, icon: 'register', label: 'Enter\nTime', title: 'Enter Time (timesheets)' },
+  { x: 631, y: 731, icon: 'employees', label: 'Pay\nEmployees', title: 'Enter Paycheck (Alt+Y, P)', run: (d) => d.open('paycheck', { id: null }) },
+  { x: 872, y: 731, icon: 'paybills', label: 'Pay\nLiabilities', title: 'Pay Payroll Liabilities' },
+  { x: 1285, y: 731, icon: 'employees', label: 'Employee\nBenefits', title: 'Employee Benefits' },
   // Company
   { x: 1546, y: 58, icon: 'accounts', label: 'Chart of\nAccounts', title: 'Chart of Accounts (Ctrl+A)', run: (d) => d.open('accounts') },
+  { x: 1715, y: 58, icon: 'items', label: 'Inventory\nActivities', title: 'Inventory Activities' },
   { x: 1546, y: 160, icon: 'items', label: 'Items &\nServices', title: 'Item List (Alt+L, I)', run: (d) => d.open('items') },
+  { x: 1715, y: 267, icon: 'register', label: 'Calendar', title: 'Calendar' },
   // Banking
   { x: 1546, y: 452, icon: 'deposit', label: 'Record\nDeposits', title: 'Make Deposits (Alt+B, D)', run: (d) => d.open('deposit', { id: null }) },
+  { x: 1715, y: 452, icon: 'register', label: 'Reconcile', title: 'Reconcile' },
   { x: 1546, y: 578, icon: 'check', label: 'Write\nChecks', title: 'Write Checks (Ctrl+W)', run: (d) => d.open('check', { id: null }) },
   { x: 1715, y: 578, icon: 'register', label: 'Check\nRegister', title: 'Use Register (Ctrl+R)', run: (d) => void openRegister(d) },
   { x: 1546, y: 715, icon: 'check', label: 'Print\nChecks', title: 'Print Checks', run: (d) => d.open('printchecks') },
+  { x: 1715, y: 715, icon: 'check', label: 'Enter Credit\nCard Charges', title: 'Enter Credit Card Charges' },
 ];
 
 /** The flow lines; `arrow` puts a head at the end. */
@@ -98,10 +109,17 @@ const LINES: { d: string; arrow?: boolean }[] = [
   { d: 'M557 55H873', arrow: true }, // Receive Inventory -> Enter Bills Against Inventory
   { d: 'M895 132V179' }, // Enter Bills Against Inventory joins the Pay Bills line
   { d: 'M393 179H1229', arrow: true }, // Enter Bills -> Pay Bills
-  { d: 'M371 202V430', arrow: true }, // Enter Bills -> Create Invoices (billable costs)
+  // Vertical lines start and end clear of the labels under the icons, as in QuickBooks.
+  { d: 'M173 430V119', arrow: true }, // Estimates -> Purchase Orders
+  { d: 'M371 221V430', arrow: true }, // Enter Bills -> Create Invoices (billable costs)
+  { d: 'M195 452H349', arrow: true }, // Estimates -> Create Invoices
   { d: 'M393 452H925', arrow: true }, // Create Invoices -> Receive Payments
-  { d: 'M685 567H838V452' }, // Finance Charges join the Receive Payments line
+  { d: 'M685 567H925', arrow: true }, // Finance Charges -> Statements
+  { d: 'M947 545V516', arrow: true }, // Statements -> Receive Payments
   { d: 'M969 452H1524', arrow: true }, // Receive Payments -> Record Deposits
+  { d: 'M371 709V516', arrow: true }, // Enter Time -> Create Invoices
+  { d: 'M393 731H609', arrow: true }, // Enter Time -> Pay Employees
+  { d: 'M653 731H850', arrow: true }, // Pay Employees -> Pay Liabilities
 ];
 
 const pct = (v: number, of: number) => `${(v / of) * 100}%`;
@@ -180,13 +198,16 @@ export function Navigator(_: WinProps) {
           ))}
         </svg>
         {STEPS.map((s) => (
+          // A step RapidBooks has not got stays focusable (aria-disabled, not disabled) so its tooltip
+          // shows on hover and a click or Enter puts the same note on the status bar.
           <button
             key={`${s.x},${s.y}`}
             type="button"
-            className="home-step home-btn"
+            className={`home-step home-btn${s.run ? '' : ' off'}`}
             style={{ left: pct(s.x, W), top: pct(s.y, H) } as CSSProperties}
-            title={s.title}
-            onClick={() => s.run(desk)}
+            title={s.run ? s.title : notImplemented(s.title)}
+            aria-disabled={s.run ? undefined : true}
+            onClick={() => (s.run ? s.run(desk) : desk.setStatus(notImplemented(s.title)))}
           >
             <Pictogram name={s.icon} />
             <span>{s.label}</span>

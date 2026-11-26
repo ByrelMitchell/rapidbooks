@@ -165,6 +165,20 @@ export function appliedTo(db: DB, invoiceId: number, exceptFrom: number | null =
   return r.n;
 }
 
+/*
+ * The same sums as appliedTo / appliedFrom (without asOf), as SQL over a txns row `t`, for
+ * queries that list many documents at once. `except` adds a `l.from_txn IS NOT ?` parameter
+ * (appliedTo's exceptFrom). Keep these and the two functions in step.
+ */
+export const appliedToSql = (t: string, except = false) =>
+  `COALESCE((SELECT SUM(l.amount + l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = ${t}.id${except ? ' AND l.from_txn IS NOT ?' : ''}), 0)`;
+export const appliedFromSql = (t: string) => `COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.from_txn = ${t}.id), 0)`;
+
+/** SQL: what is still open on `t`: unpaid on an invoice or bill, unapplied on a payment or credit; NULL for other types. */
+export const openBalanceSql = (t: string) =>
+  `CASE WHEN ${t}.type IN ('INVOICE', 'BILL') THEN ${t}.total - ${appliedToSql(t)}
+        WHEN ${t}.type IN ('PAYMENT', 'CREDITMEMO', 'BILLPMT', 'BILLCREDIT') THEN ${t}.total - ${appliedFromSql(t)} END`;
+
 /** Amount of a payment or credit memo applied to invoices. */
 export function appliedFrom(db: DB, fromId: number, asOf?: string): number {
   const r = db

@@ -18,7 +18,7 @@ import {
 } from '@rapidbooks/shared';
 import type { DB } from '../db';
 import { AppError } from '../errors';
-import { accountRow, appliedFrom, appliedTo, cap, fullName, money, nameRow, txnRow } from './common';
+import { accountRow, appliedFrom, appliedFromSql, appliedTo, appliedToSql, cap, fullName, money, nameRow, txnRow } from './common';
 import { getTxn, nextNum, saveTxn } from './posting';
 import { billName, CHECK_TYPES } from './purchasing';
 
@@ -46,7 +46,7 @@ export function listVendorCredits(db: DB, vendorId: number | null): VendorCredit
   const rows = db
     .prepare(
       `SELECT t.id, t.type, t.num, t.date, t.name_id, t.ap_account_id, t.memo, t.total,
-              t.total - COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.from_txn = t.id), 0) AS unapplied
+              t.total - ${appliedFromSql('t')} AS unapplied
          FROM txns t
         WHERE t.type IN ('BILLCREDIT', 'BILLPMT') AND (? IS NULL OR t.name_id = ?)
         ORDER BY t.date, t.id`,
@@ -72,8 +72,7 @@ export function listUnpaidBills(db: DB, q: UnpaidBillsQuery = {}): UnpaidBill[] 
     .prepare(
       `SELECT t.id, t.ref_no, t.date, t.due_date, t.name_id, t.ap_account_id, t.memo, t.total, t.terms_id,
               COALESCE(tm.discount_pct, 0) AS discount_pct, tm.discount_days,
-              t.total - COALESCE((SELECT SUM(l.amount + l.discount) FROM links l
-                                   WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn IS NOT ?), 0) AS open_balance,
+              t.total - ${appliedToSql('t', true)} AS open_balance,
               COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS applied_by_payment,
               COALESCE((SELECT SUM(l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS discount_by_payment
          FROM txns t LEFT JOIN terms tm ON tm.id = t.terms_id

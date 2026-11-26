@@ -297,6 +297,22 @@ button.home-title:hover {
   background: var(--field);
 }
 
+/* QuickBooks steps RapidBooks has not got: grey, and the tooltip says so. */
+.home-step.off {
+  color: #a0a0a0;
+}
+
+.home-step.off:hover {
+  color: #a0a0a0;
+  background: transparent;
+  border-color: transparent;
+}
+
+.home-step.off .pictogram {
+  filter: grayscale(1);
+  opacity: 0.4;
+}
+
 .nav-backup {
   display: flex;
   align-items: center;

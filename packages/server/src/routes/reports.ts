@@ -71,6 +71,10 @@ export function registerReportRoutes(app: FastifyInstance, db: DB) {
       text: q.text && q.text.trim() ? q.text.trim() : null,
       account_id: optInt(q.account_id, 'The account'),
       item_id: optInt(q.item_id, 'The item'),
+      name_kind: q.name_kind ? z.enum(['customer', 'vendor', 'employee', 'other']).parse(q.name_kind) : null,
+      status: q.status ? z.enum(['open', 'overdue']).parse(q.status) : null,
+      today: optDate(q.today, 'Today'),
+      with_open: q.with_open === '1' || q.with_open === 'true',
       limit: optInt(q.limit, 'The limit') ?? 200,
     });
   });

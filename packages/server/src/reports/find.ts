@@ -1,6 +1,7 @@
-import { isIsoDate, type FindResult, type FindRow, type GraphData, type SalesGraph } from '@rapidbooks/shared';
+import { isIsoDate, todayIso, type FindResult, type FindRow, type GraphData, type NameKind, type SalesGraph } from '@rapidbooks/shared';
 import type { DB } from '../db';
 import { AppError } from '../errors';
+import { openBalanceSql } from '../ledger/common';
 import { mainAccount, type TxnHead } from './accountant';
 import { lookups, monthLabel, monthsBetween, withDescendants, typeLabel, txnDateBounds } from './engine';
 import { salesLines } from './sales';
@@ -20,6 +21,16 @@ export interface FindQuery {
   text: string | null; // in the memo, split memos or line descriptions
   account_id: number | null; // any split in this account (or its sub-accounts)
   item_id: number | null; // any line with this item
+  /** Only transactions whose own name is of this kind (the Customer and Vendor Centers' Transactions tab). */
+  name_kind?: NameKind | null;
+  /**
+   * 'open': invoices and bills with an unpaid balance, payments and credits with an unapplied one.
+   * 'overdue': open invoices and bills due before `today`.
+   */
+  status?: 'open' | 'overdue' | null;
+  today?: string | null;
+  /** Fill in open_balance (null otherwise): it costs two subqueries a row. */
+  with_open?: boolean;
   limit: number;
 }
 
@@ -77,16 +88,23 @@ export function find(db: DB, q: FindQuery): FindResult {
     where.push('EXISTS (SELECT 1 FROM lines l WHERE l.txn_id = t.id AND l.item_id = ?)');
     args.push(q.item_id);
   }
+  if (q.name_kind) {
+    where.push('t.name_id IN (SELECT n.id FROM names n WHERE n.kind = ?)');
+    args.push(q.name_kind);
+  }
+  const open = openBalanceSql('t');
+  if (q.status === 'open') where.push(`(${open}) > 0`);
+  if (q.status === 'overdue') {
+    where.push(`t.type IN ('INVOICE', 'BILL') AND (CASE WHEN t.due_date = '' THEN t.date ELSE t.due_date END) < ? AND (${open}) > 0`);
+    args.push(q.today ?? todayIso());
+  }
+  const withOpen = q.with_open || !!q.status;
   const limit = Math.max(1, Math.min(q.limit, 1000));
   const rows = db
     .prepare(
       `SELECT t.id, t.type, t.date, t.num, t.name_id, t.memo, t.pay_method, t.account_id, t.ar_account_id, t.ap_account_id, t.due_date, t.total,
               (SELECT s.account_id FROM splits s WHERE s.txn_id = t.id ORDER BY s.seq LIMIT 1) AS first_account,
-              CASE WHEN t.type IN ('INVOICE', 'BILL')
-                     THEN t.total - COALESCE((SELECT SUM(l.amount + l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id), 0)
-                   WHEN t.type IN ('CREDITMEMO', 'BILLCREDIT', 'PAYMENT')
-                     THEN t.total - COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.from_txn = t.id), 0)
-              END AS open_balance
+              ${withOpen ? open : 'NULL'} AS open_balance
          FROM txns t ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY t.date DESC, t.id DESC LIMIT ?`,
     )

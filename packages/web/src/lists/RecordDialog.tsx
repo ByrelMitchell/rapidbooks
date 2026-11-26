@@ -174,7 +174,8 @@ export function RecordDialogFrame({
   children: ReactNode;
   /**
    * QuickBooks 2013's New Customer / New Vendor: the "is inactive" box at the bottom left and
-   * OK, Cancel, Help along the bottom right (no Next button; Alt+N is left to the window).
+   * OK, Cancel, Help along the bottom right. There is no Next button: Alt+N still saves and
+   * starts a new one (the window's own Alt+letters must leave S and N alone).
    */
   bottom?: boolean;
   className?: string;
@@ -218,7 +219,7 @@ export function RecordDialogFrame({
           {children}
           <div className="rec-foot">
             <div className="rec-inactive">{inactive}</div>
-            <button type="submit" className="btn default">
+            <button type="submit" className="btn default" title="Save and close (Enter or Alt+S). Alt+N saves and starts a new one.">
               OK
             </button>
             {cancel}

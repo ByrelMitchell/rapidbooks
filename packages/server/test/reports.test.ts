@@ -596,6 +596,31 @@ describe('Find', () => {
     expect(q({ num: '1004' }).more).toBe(false);
   });
 
+  it('open balances only when asked; open, overdue and name-kind filters on the server', () => {
+    expect(q({ types: ['INVOICE'] }).rows.every((r) => r.open_balance === null)).toBe(true);
+    const all = q({ types: ['INVOICE', 'BILL', 'PAYMENT', 'CREDITMEMO', 'BILLCREDIT'], with_open: true }).rows;
+    expect(all.every((r) => typeof r.open_balance === 'number')).toBe(true);
+    const openIds = all.filter((r) => r.open_balance! > 0).map((r) => r.id);
+    expect(openIds.length).toBeGreaterThan(0);
+    expect(openIds.length).toBeLessThan(all.length);
+    const open = q({ types: ['INVOICE', 'BILL', 'PAYMENT', 'CREDITMEMO', 'BILLCREDIT'], status: 'open' }).rows;
+    expect(open.map((r) => r.id)).toEqual(openIds);
+    // Overdue: open invoices and bills due before today.
+    const docs = all.filter((r) => (r.type === 'INVOICE' || r.type === 'BILL') && r.open_balance! > 0).map((r) => r.id);
+    expect(q({ status: 'overdue', today: '2999-01-01' }).rows.map((r) => r.id)).toEqual(docs);
+    expect(q({ status: 'overdue', today: '1900-01-01' }).rows).toEqual([]);
+    const late = q({ status: 'overdue', today: '2999-01-01' }).rows;
+    const cut = late[Math.floor(late.length / 2)].due_date;
+    expect(q({ status: 'overdue', today: cut }).rows.every((r) => r.due_date < cut)).toBe(true);
+    // Only names of a kind.
+    const kindOf = new Map((F.db.prepare('SELECT id, kind FROM names').all() as { id: number; kind: string }[]).map((n) => [n.id, n.kind]));
+    const checks = q({ types: ['CHECK'] }).rows;
+    const vendorChecks = q({ types: ['CHECK'], name_kind: 'vendor' }).rows;
+    expect(vendorChecks.length).toBeGreaterThan(0);
+    expect(vendorChecks.every((r) => kindOf.get(r.name_id!) === 'vendor')).toBe(true);
+    expect(vendorChecks.map((r) => r.id)).toEqual(checks.filter((r) => r.name_id !== null && kindOf.get(r.name_id) === 'vendor').map((r) => r.id));
+  });
+
   it('is served at /api/find', async () => {
     const app = buildApp(F.db);
     const r = (await app.inject({ method: 'GET', url: '/api/find?types=CHECK&text=rent' })).json();

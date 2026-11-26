@@ -11,7 +11,9 @@ import type { DB } from '../db';
 import { AppError } from '../errors';
 import {
   appliedFrom,
+  appliedFromSql,
   appliedTo,
+  appliedToSql,
   canPay,
   cap,
   invName,
@@ -55,8 +57,7 @@ export function listOpenInvoices(db: DB, customerId: number, paymentId: number |
     .prepare(
       `SELECT t.id, t.num, t.date, t.due_date, t.name_id, t.total, t.is_finance_charge, t.terms_id,
               COALESCE(tm.discount_pct, 0) AS discount_pct, tm.discount_days,
-              t.total - COALESCE((SELECT SUM(l.amount + l.discount) FROM links l
-                                   WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn IS NOT ?), 0) AS open_balance,
+              t.total - ${appliedToSql('t', true)} AS open_balance,
               COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS applied_by_payment,
               COALESCE((SELECT SUM(l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS discount_by_payment
          FROM txns t LEFT JOIN terms tm ON tm.id = t.terms_id
@@ -87,7 +88,7 @@ export function listCredits(db: DB, customerId: number): AvailableCredit[] {
   const rows = db
     .prepare(
       `SELECT t.id, t.type, t.num, t.date, t.name_id, t.memo, t.total,
-              t.total - COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.from_txn = t.id), 0) AS unapplied
+              t.total - ${appliedFromSql('t')} AS unapplied
          FROM txns t
         WHERE t.type IN ('PAYMENT', 'CREDITMEMO') AND t.name_id IN ${inList(names)}
         ORDER BY t.date, t.id`,
