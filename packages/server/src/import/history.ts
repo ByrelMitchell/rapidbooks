@@ -12,7 +12,7 @@ import { systemAccount } from '../ledger/common';
 import { blankHeader, importWriter, type Built, type Header, type ImportLink, type ImportSplit, type StoredLine } from '../ledger/posting';
 import { createName } from '../lists/names';
 import { importIif } from './iif';
-import { parseJournal, type JournalRow, type JournalTxn } from './journal';
+import { parseJournals, type JournalFile, type JournalFileSummary, type JournalRow, type JournalTxn } from './journal';
 import { norm, PAID_VALUES, TYPE_MAP } from './layout';
 import { parseOpenDocs, type OpenDocsReport } from './reports';
 
@@ -32,7 +32,8 @@ import { parseOpenDocs, type OpenDocsReport } from './reports';
 
 export interface HistoryInput {
   iif: Uint8Array;
-  journal: Uint8Array | string;
+  /** The Journal export, or several (one per date range), read as one. */
+  journal: Uint8Array | string | JournalFile[];
   /** Open Invoices (or A/R Aging Summary) export: the target open balances of invoices. */
   openInvoices?: Uint8Array | string;
   /** Unpaid Bills Detail (or A/P Aging Summary) export. */
@@ -54,6 +55,7 @@ export interface TypeCount {
 
 export interface Skipped {
   line: number;
+  file?: string;
   transNo: string;
   qbType: string;
   date: string;
@@ -74,6 +76,10 @@ export interface HistoryResult {
   lists: ImportResult;
   journalColumns: string[];
   delimiter: string;
+  /** One entry per Journal file, in date order. */
+  journalFiles: JournalFileSummary[];
+  /** Transactions found in two Journal files (overlapping dates), imported once. */
+  journalDuplicates: number;
   rowsRead: number;
   txnsRead: number;
   txnsImported: number;
@@ -282,7 +288,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
     result.phases[name] = (now - mark) / 1000;
     mark = now;
   };
-  const journal = parseJournal(input.journal);
+  const journal = parseJournals(Array.isArray(input.journal) ? input.journal : [{ name: 'journal', data: input.journal }]);
   const openInv = input.openInvoices !== undefined ? parseOpenDocs(input.openInvoices, 'Open Invoices') : null;
   const unpaid = input.unpaidBills !== undefined ? parseOpenDocs(input.unpaidBills, 'Unpaid Bills') : null;
 
@@ -295,6 +301,8 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
   const result: HistoryResult = {
     lists: { counts: { accounts: 0, terms: 0, customers: 0, jobs: 0, vendors: 0, employees: 0, other_names: 0, items: 0 }, ignored_record_types: [], warnings: [] },
     journalColumns: journal.columns,
+    journalFiles: journal.files,
+    journalDuplicates: journal.duplicates,
     delimiter: journal.delimiter === '\t' ? 'tab' : 'comma',
     rowsRead: journal.rowsRead,
     txnsRead: journal.txns.length,
@@ -367,7 +375,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
       c.rowsRead += qb.rows.length;
       const skip = (reason: string) => {
         c.skipped++;
-        result.skipped.push({ line: qb.line, transNo: qb.transNo, qbType: qb.qbType, date: qb.rawDate, num: qb.num, reason });
+        result.skipped.push({ line: qb.line, file: qb.file, transNo: qb.transNo, qbType: qb.qbType, date: qb.rawDate, num: qb.num, reason });
       };
       if (qb.problems.length > 0) {
         skip(qb.problems.join('; '));

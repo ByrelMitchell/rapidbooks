@@ -57,6 +57,15 @@ If your QuickBooks has no Export button that makes a .csv file: click **Print**,
 **File** instead of the printer, pick **Tab delimited file**, and save it as
 `journal.txt`. RapidBooks reads both.
 
+**A long history does not fit in one file.** Her QuickBooks 2013 stopped the .csv export
+at 32,768 rows (about seven years of her transactions). So instead of Dates **All**,
+export the Journal several times, five years at a time, with Dates **Custom**: From
+01/01/1996 To 12/31/2000 → `journal-1996.csv`, From 01/01/2001 To 12/31/2005 →
+`journal-2001.csv`, and so on up to *DATE*. Overlapping ranges do no harm (a
+transaction in two files is imported once), but a gap loses everything in it, so make
+each range start the day after the previous one ends. If a file is still cut off, the
+import says so ("the export was cut off"): split that range in two.
+
 ### 1.3 Trial Balance → `tb.csv`
 
 **Reports > Accountant & Taxes > Trial Balance**. **Modify Report**: Dates **Custom**,
@@ -105,7 +114,11 @@ Open a terminal in the RapidBooks folder and type (one line; `\` continues a lin
 
 ```
 npx tsx packages/server/src/import/cli.ts \
-  --iif qb-export/lists.iif --journal qb-export/journal.csv \
+  --iif qb-export/lists.iif \
+  --journal qb-export/journal-1996.csv --journal qb-export/journal-2001.csv \
+  --journal qb-export/journal-2006.csv --journal qb-export/journal-2011.csv \
+  --journal qb-export/journal-2016.csv --journal qb-export/journal-2021.csv \
+  --journal qb-export/journal-2026.csv \
   --trial-balance qb-export/tb.csv --as-of 2026-10-31 \
   --open-invoices qb-export/open-invoices.csv --unpaid-bills qb-export/unpaid-bills.csv \
   --profit-loss qb-export/pl-2024.csv --profit-loss qb-export/pl-2025.csv \
@@ -113,7 +126,9 @@ npx tsx packages/server/src/import/cli.ts \
 ```
 
 - Replace `2026-10-31` with *DATE*, written year-month-day.
-- Use `journal.txt` instead of `journal.csv` if that is what you made.
+- Give one `--journal` per Journal file, in any order (they are sorted by date). With a
+  single file, one `--journal qb-export/journal.csv` is enough. Use `.txt` names if that
+  is what you made.
 - Leave out any report you did not make. Without any, the import still works and prints
   RapidBooks' own trial balance for you to compare by eye.
 - A Profit & Loss file whose only amount column is headed "TOTAL" needs its dates:
@@ -317,7 +332,9 @@ so it can be adjusted quickly. On the first trial run, check these:
 6. Account names are full colon-separated names ("Utilities:Electric"); an account
    number in front ("6100 · Rent") is removed. A plain name that is unique as a
    subaccount name is also accepted.
-7. Item names in the Item column are full names or unique short names.
+7. Item names in the Item column are full names or unique short names. QuickBooks 2013
+   writes "Name (Description)", or "(Description)" for a line without an item; the
+   description, matched against the Item Description column, is removed.
 8. Item rows of invoices carry the line description in Memo and/or Item Description,
    the quantity in Qty (sign ignored) and the rate in Sales Price; a percentage rate ends
    in "%".

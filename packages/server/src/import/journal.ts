@@ -34,6 +34,7 @@ export interface JournalRow {
 
 export interface JournalTxn {
   line: number; // where it starts in the file
+  file?: string; // which file, when several Journal files are read together
   transNo: string;
   qbType: string; // as written ("Bill Pmt -Check")
   date: string | null; // ISO; null if missing/unreadable
@@ -222,11 +223,105 @@ export function parseJournal(data: Uint8Array | string): ParsedJournal {
     });
   }
 
+  // QuickBooks ends every transaction with its total row and the report with TOTAL. A
+  // file that stops inside an unbalanced transaction was cut off (an export row limit).
+  if (cur && cur.problems.length === 0) {
+    const sum = cur.rows.reduce((t, x) => t + x.amount, 0);
+    if (sum !== 0) {
+      const dr = cur.rows.reduce((t, x) => t + (x.amount > 0 ? x.amount : 0), 0);
+      const cr = dr - sum;
+      cur.problems.push(
+        `the file ends in the middle of this transaction (debits ${(dr / 100).toFixed(2)}, credits ${(cr / 100).toFixed(2)}): the export was cut off and everything after this is missing. Export the Journal in shorter date ranges and give each file with its own --journal`,
+      );
+      warnings.push(`The file stops at line ${cur.line} in the middle of a transaction, without the report's TOTAL row: it looks cut off. Everything after that is missing.`);
+    }
+  }
+
   return {
     txns,
     rowsRead,
     columns: (Object.keys(col) as JournalField[]).filter((k) => col[k] !== undefined),
     delimiter,
     warnings,
+  };
+}
+
+export interface JournalFile {
+  name: string;
+  data: Uint8Array | string;
+}
+
+export interface JournalFileSummary {
+  name: string;
+  txns: number;
+  rows: number;
+  delimiter: ',' | '\t';
+  first: string | null; // earliest and latest transaction dates (ISO)
+  last: string | null;
+}
+
+export interface ParsedJournals extends ParsedJournal {
+  files: JournalFileSummary[];
+  /** Transactions found in more than one file (overlapping date ranges), imported once. */
+  duplicates: number;
+}
+
+const signature = (t: JournalTxn) => JSON.stringify([norm(t.qbType), t.date, t.num, t.rows.map((r) => [r.account.toLowerCase(), r.amount, r.name.toLowerCase()])]);
+
+/**
+ * Several Journal exports (one per date range) read as one Journal. The files are taken
+ * in date order. A transaction in two files (overlapping ranges) is kept once; the same
+ * Trans # with different lines in two files gets a problem, so it is skipped and shown.
+ * Columns: those every file has. Each transaction's `file` says where it came from.
+ */
+export function parseJournals(files: JournalFile[]): ParsedJournals {
+  const parsed = files.map((f) => {
+    try {
+      return { name: f.name, j: parseJournal(f.data) };
+    } catch (e) {
+      throw e instanceof Error && files.length > 1 ? new Error(`${f.name}: ${e.message}`) : e;
+    }
+  });
+  const dates = (j: ParsedJournal) => j.txns.map((t) => t.date).filter((d): d is string => d !== null).sort();
+  const summaries = parsed.map(({ name, j }): JournalFileSummary => {
+    const d = dates(j);
+    return { name, txns: j.txns.length, rows: j.rowsRead, delimiter: j.delimiter, first: d[0] ?? null, last: d[d.length - 1] ?? null };
+  });
+  const order = parsed.map((p, i) => i).sort((a, b) => (summaries[a].first ?? '9999').localeCompare(summaries[b].first ?? '9999') || a - b);
+
+  const multi = files.length > 1;
+  const txns: JournalTxn[] = [];
+  const warnings: string[] = [];
+  const seen = new Map<string, { t: JournalTxn; file: number; sig: string }>();
+  let duplicates = 0;
+  let rowsRead = 0;
+  for (const i of order) {
+    const { name, j } = parsed[i];
+    for (const w of j.warnings) warnings.push(multi ? `${name}: ${w}` : w);
+    for (const t of j.txns) {
+      if (multi) t.file = name;
+      const sig = signature(t);
+      const key = t.transNo !== '' ? `#${t.transNo}` : sig;
+      const prev = seen.get(key);
+      if (prev && prev.file !== i) {
+        if (prev.sig === sig) {
+          duplicates++;
+          continue;
+        }
+        t.problems.push(`Trans # ${t.transNo} is also in ${prev.t.file} (line ${prev.t.line}) with different lines; that one was imported`);
+      } else if (!prev) seen.set(key, { t, file: i, sig });
+      rowsRead += t.rows.length;
+      txns.push(t);
+    }
+  }
+  const columns = parsed.length === 0 ? [] : parsed[0].j.columns.filter((c) => parsed.every((p) => p.j.columns.includes(c)));
+  return {
+    txns,
+    rowsRead,
+    columns,
+    delimiter: parsed[0]?.j.delimiter ?? ',',
+    warnings,
+    files: order.map((i) => summaries[i]),
+    duplicates,
   };
 }

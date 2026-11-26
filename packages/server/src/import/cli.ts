@@ -2,7 +2,7 @@
 //
 // Full history (lists + every transaction), with a reconciliation report:
 //
-//   npx tsx packages/server/src/import/cli.ts --iif lists.iif --journal journal.csv
+//   npx tsx packages/server/src/import/cli.ts --iif lists.iif --journal journal.csv [--journal journal-2.csv ...]
 //       [--trial-balance tb.csv --as-of 2026-10-31] [--fiscal-year-start 1]
 //       [--open-invoices oi.csv] [--unpaid-bills ub.csv] [--open-as-of 2026-10-31]
 //       [--profit-loss pl-2025.csv [--pl-from 2025-01-01 --pl-to 2025-12-31]] ...
@@ -30,7 +30,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const defaultDb = () => process.env.RAPIDBOOKS_DB ?? resolve(root, 'data/rapidbooks.db');
 
 const USAGE = `Usage:
-  npx tsx packages/server/src/import/cli.ts --iif lists.iif --journal journal.csv
+  npx tsx packages/server/src/import/cli.ts --iif lists.iif --journal journal.csv [--journal journal-2.csv ...]
       [--trial-balance tb.csv --as-of YYYY-MM-DD] [--fiscal-year-start MONTH]
       [--open-invoices oi.csv] [--unpaid-bills ub.csv] [--open-as-of YYYY-MM-DD]
       [--profit-loss pl.csv [--pl-from YYYY-MM-DD --pl-to YYYY-MM-DD]] ...
@@ -64,6 +64,7 @@ function removeDb(path: string) {
 export function runHistory(argv: string[], log: (s: string) => void = console.log, err: (s: string) => void = console.error): number {
   const opt: Record<string, string> = {};
   const pl: { file: string; from?: string; to?: string }[] = [];
+  const journals: string[] = [];
   let force = false;
   const VALUED = ['--iif', '--journal', '--trial-balance', '--as-of', '--fiscal-year-start', '--open-invoices', '--unpaid-bills', '--open-as-of', '--out', '--report'];
   for (let i = 0; i < argv.length; i++) {
@@ -76,6 +77,7 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
         return 2;
       }
       if (a === '--profit-loss') pl.push({ file: v });
+      else if (a === '--journal') journals.push(v);
       else if (a === '--pl-from' || a === '--pl-to') {
         if (pl.length === 0) {
           err(`${a} must follow --profit-loss.`);
@@ -88,7 +90,7 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
       return 2;
     }
   }
-  if (!opt['--iif'] || !opt['--journal']) {
+  if (!opt['--iif'] || journals.length === 0) {
     err(`Both --iif and --journal are needed.\n${USAGE}`);
     return 2;
   }
@@ -121,7 +123,7 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
   try {
     const files = {
       iif: read(opt['--iif']),
-      journal: read(opt['--journal']),
+      journal: journals.map((f) => ({ name: f, data: read(f) })),
       tb: opt['--trial-balance'] ? read(opt['--trial-balance']) : undefined,
       oi: opt['--open-invoices'] ? read(opt['--open-invoices']) : undefined,
       ub: opt['--unpaid-bills'] ? read(opt['--unpaid-bills']) : undefined,
@@ -151,7 +153,7 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
     }
     moveDb(temp, out);
 
-    const head = [`Imported ${opt['--iif']} and ${opt['--journal']} into ${out}.`];
+    const head = [`Imported ${opt['--iif']} and ${journals.join(', ')} into ${out}.`];
     if (moved) head.push(`The previous company file was renamed to ${moved}.`);
     const text = `${head.join('\n')}\n\n${rec.text}`;
     log(text);

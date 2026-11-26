@@ -360,6 +360,12 @@ export function reconcile(db: DB, h: HistoryResult, input: ReconcileInput): Reco
     const w = [24, 18, 7, 9, 8, 7, 10, 10];
     const lines = [
       `Journal: ${h.txnsRead} transactions in ${h.rowsRead} rows (${h.delimiter}-delimited; columns found: ${h.journalColumns.join(', ')}).`,
+      ...(h.journalFiles.length > 1
+        ? [
+            ...h.journalFiles.map((f) => `  ${f.name}: ${f.txns} transactions in ${f.rows} rows, ${f.first ? usDate(f.first) : '?'} to ${f.last ? usDate(f.last) : '?'}`),
+            ...(h.journalDuplicates ? [`  ${h.journalDuplicates} transaction(s) were in two files (overlapping dates) and were imported once.`] : []),
+          ]
+        : []),
       `Lists: ${h.lists.counts.accounts} accounts, ${h.lists.counts.customers} customers and jobs, ${h.lists.counts.vendors} vendors, ${h.lists.counts.employees} employees, ${h.lists.counts.other_names} other names, ${h.lists.counts.items} items, ${h.lists.counts.terms} terms.`,
       '',
       row(['QuickBooks type', 'RapidBooks type', 'Read', 'Imported', 'Skipped', 'Locked', 'Rows read', 'Rows imp.'], w),
@@ -375,7 +381,7 @@ export function reconcile(db: DB, h: HistoryResult, input: ReconcileInput): Reco
     title: 'Transactions skipped',
     status: h.skipped.length ? 'FAIL' : 'PASS',
     lines: h.skipped.length ? [] : ['None.'],
-    differences: h.skipped.map((s) => `line ${s.line}: ${s.qbType || '(no type)'}${s.transNo ? ` Trans # ${s.transNo}` : ''}${s.num ? ` no. ${s.num}` : ''} of ${s.date || '(no date)'}: ${s.reason}`),
+    differences: h.skipped.map((s) => `${s.file ? `${s.file} ` : ''}line ${s.line}: ${s.qbType || '(no type)'}${s.transNo ? ` Trans # ${s.transNo}` : ''}${s.num ? ` no. ${s.num}` : ''} of ${s.date || '(no date)'}: ${s.reason}`),
   });
 
   {

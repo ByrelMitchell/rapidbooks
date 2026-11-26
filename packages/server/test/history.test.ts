@@ -265,6 +265,71 @@ describe('history import (tab-delimited layout, Open Invoices and Unpaid Bills r
   });
 });
 
+describe('history import from several Journal files', () => {
+  // The fixture as text, cut into its blank-line separated blocks: titles, header + first
+  // transaction, one block per transaction, TOTAL.
+  const text = decodeText(csv).replace(/\r\n/g, '\n');
+  const blocks = text.split('\n\n');
+  const header = blocks[1].split('\n')[0];
+  const titles = blocks[0];
+  const file = (txnBlocks: string[]) => [titles, '', header, txnBlocks.join('\n\n'), '', blocks[blocks.length - 1]].join('\n');
+  const txnBlocks = [blocks[1].split('\n').slice(1).join('\n'), ...blocks.slice(2, -1)];
+  const allSplits = () =>
+    (db.prepare('SELECT qb_trans_no AS n FROM txns ORDER BY qb_trans_no').all() as { n: string }[]).map(({ n }) => [n, splits(n)]);
+
+  it('imports overlapping date-range files like the single file, each transaction once', () => {
+    importCsv();
+    const single = allSplits();
+    db = openDb(':memory:');
+    const early = file(txnBlocks.slice(0, 16));
+    const late = file(txnBlocks.slice(12)); // 4 transactions in both
+    // Given in the wrong order on purpose: they are taken in date order.
+    const r = importHistory(db, { iif, journal: [{ name: 'late.csv', data: late }, { name: 'early.csv', data: early }] });
+    expect(r.txnsRead).toBe(27);
+    expect(r.txnsImported).toBe(26);
+    expect(r.journalDuplicates).toBe(4);
+    expect(r.journalFiles.map((f) => [f.name, f.txns])).toEqual([
+      ['early.csv', 16],
+      ['late.csv', 15],
+    ]);
+    expect(r.skipped).toEqual([expect.objectContaining({ num: 'GJ-BAD', file: 'late.csv' })]);
+    expect(allSplits()).toEqual(single);
+    expect(reconcile(db, r, {}).text).toMatch(/late\.csv line \d+: General Journal/);
+  });
+
+  it('skips a Trans # found in two files with different lines', () => {
+    const early = file(txnBlocks.slice(0, 13));
+    const changed = txnBlocks[12].replace(/^(,\d+,[^,]+,[^,]+,)([^,]*)/, '$1CHANGED');
+    expect(changed).not.toBe(txnBlocks[12]);
+    const late = file([changed, ...txnBlocks.slice(13)]);
+    const r = importHistory(db, { iif, journal: [{ name: 'a.csv', data: early }, { name: 'b.csv', data: late }] });
+    expect(r.journalDuplicates).toBe(0);
+    expect(r.skipped).toContainEqual(expect.objectContaining({ file: 'b.csv', num: 'CHANGED', reason: expect.stringContaining('is also in a.csv') }));
+  });
+
+  it('says so when a file stops in the middle of a transaction', () => {
+    // Everything up to the first row of the 5th transaction, nothing after (no TOTAL).
+    const cut = [titles, '', header, txnBlocks.slice(0, 4).join('\n\n'), '', txnBlocks[4].split('\n')[0]].join('\n');
+    const r = importHistory(db, { iif, journal: cut });
+    expect(r.skipped).toEqual([expect.objectContaining({ reason: expect.stringContaining('the export was cut off') })]);
+    expect(r.warnings.some((w) => /looks cut off/.test(w))).toBe(true);
+    expect(r.txnsImported).toBe(4);
+  });
+
+  it('takes --journal more than once on the command line', () => {
+    const a = join(scratch, 'j-early.csv');
+    const b = join(scratch, 'j-late.csv');
+    writeFileSync(a, file(txnBlocks.slice(0, 16)));
+    writeFileSync(b, file(txnBlocks.slice(12)));
+    const out = join(scratch, 'multi.db');
+    const log: string[] = [];
+    runHistory(['--iif', join(dir, 'lists.iif'), '--journal', a, '--journal', b, '--out', out], (s) => log.push(s), (s) => log.push(s));
+    expect(existsSync(out)).toBe(true);
+    expect(log.join('\n')).toMatch(/j-early\.csv: 16 transactions/);
+    expect(log.join('\n')).toMatch(/4 transaction\(s\) were in two files/);
+  });
+});
+
 describe('reconciliation', () => {
   const verify = () => ({
     trialBalance: fx('tb.csv'),
