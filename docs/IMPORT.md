@@ -378,12 +378,21 @@ What comes across from the lists:
 
 ---
 
-## 9. Not yet checked against her real files
+## 9. What the importer assumes about the exports
 
-The importer was written from QuickBooks' documentation and hand-made sample files
-(`packages/server/test/fixtures/history/`), not from this company's exports. Every
+**Checked against her real files (November 2026).** Her QuickBooks 2013 exports (lists,
+the Journal in seven date ranges, Trial Balance, Open Invoices, Unpaid Bills and the
+Profit & Loss by month, as of 11/23/2026: 33,125 transactions since 1996) imported
+with **OVERALL: PASS** on every check, every month of the Profit & Loss included. Run with
+`deploy/import-history.sh`, it worked both on the development PC and on her Linux Mint 19
+computer through the Docker install, `--install` included.
+
+The importer was first written from QuickBooks' documentation and hand-made sample
+files (`packages/server/test/fixtures/history/`); what her real exports showed (items
+written "Name (Description)", account names given only by their last part, flat
+reports, write-offs of type "Discount") has been handled and is noted below. Every
 assumption about the layout lives in one file, `packages/server/src/import/layout.ts`,
-so it can be adjusted quickly. On the first trial run, check these:
+so it can be adjusted quickly if a later export differs. The assumptions:
 
 **Journal**
 
