@@ -7,7 +7,7 @@ builds a **new** RapidBooks company file, so you can try it as often as you like
 
 The plan:
 
-1. In QuickBooks, export the lists and six reports (about 20 minutes).
+1. In QuickBooks, export the lists and the reports of section 1 (about half an hour).
 2. Copy the files to the RapidBooks computer.
 3. Run one command. It builds the company file and prints a **reconciliation**: RapidBooks'
    figures next to QuickBooks', line by line, with PASS or FAIL.
@@ -19,12 +19,24 @@ Do a **trial run** now, and the **real run** on cutover day (section 7).
 
 ## 1. Exports from QuickBooks
 
-Make a folder on a USB stick called `qb-export`. Save every file below into it, with
-exactly the name given. Do every export on the same day, without anyone entering
+Make a folder called `qb-export` (on a USB stick, or in Google Drive). Save every file
+below into it. The names may be in any letter case (QuickBooks writes `lists.IIF`,
+`tb.CSV`: that is fine). Do every export on the same day, without anyone entering
 transactions in between.
 
 Pick the **verification date**: the last day you want to compare, normally today's date
 (or, on cutover day, the cutover date). Below it is written *DATE*.
+
+The files, when done:
+
+| File | What |
+|---|---|
+| `lists.iif` | the lists (1.1) |
+| `journal01.csv`, `journal02.csv`, ... | the Journal, five years per file (1.2) |
+| `tb.csv` | Trial Balance (1.3) |
+| `open-invoices.csv` | Open Invoices (1.4) |
+| `unpaid-bills.csv` | Unpaid Bills (1.5) |
+| `pl-monthly.csv` | Profit & Loss by month (1.6) |
 
 ### 1.1 Lists → `lists.iif`
 
@@ -33,45 +45,57 @@ Pick the **verification date**: the last day you want to compare, normally today
    Other Names List, Item List, Terms List, and any others shown).
 3. **OK**, save as `lists.iif` in `qb-export`.
 
-### 1.2 The Journal (every transaction ever) → `journal.csv`
+### 1.2 The Journal (every transaction ever) → `journal01.csv`, `journal02.csv`, ...
+
+Her QuickBooks 2013 stops a .csv export at 32,768 rows (about seven years of her
+transactions), so the Journal is exported five years at a time. First set the report up:
 
 1. **Reports > Accountant & Taxes > Journal**.
-2. Click **Modify Report...** At the top, in **Dates**, choose **All**.
-3. Still on the **Display** tab, in the **Columns** list, make sure these are ticked
-   (a tick mark in front). The first nine are normally ticked already; tick the others
-   if your QuickBooks offers them (skip any it does not have):
+2. Click **Modify Report...** On the **Display** tab, in the **Columns** list, make sure
+   these are ticked (a tick mark in front). The first nine are normally ticked already;
+   tick the others if your QuickBooks offers them (skip any it does not have):
    - Trans #, Type, Date, Num, Name, Memo, Account, Debit, Credit
+   - **Account Type** (needed: her Journal shows only the last part of an account's
+     name, and this tells apart Sales:Tooling from Supplies:tooling)
    - Item, Item Description, Qty, Sales Price
    - Clr
    - P. O. #, Terms, Due Date, Ship Date, Via
    - Open Balance, Paid
    - Name Address (or Name Street1, Name Street2, Name City, Name State, Name Zip)
    - Source Name, Pay Meth, Billing Status
-   - Account Type (tells apart accounts whose names end the same, see 9.6)
-4. **Filters** tab: there should be no filters except the date. If you see one for
+3. **Filters** tab: there should be no filters except the date. If you see one for
    Transaction Type or Account, select it and click **Remove Selected Filter**.
-5. **OK**. The report may take a minute or two to build.
-6. Click **Export...** (on some versions: **Print > Print to File**, see below). Choose
-   **a comma separated values (.csv) file**, click **Export**, save as `journal.csv`.
+4. **OK**.
 
-If your QuickBooks has no Export button that makes a .csv file: click **Print**, choose
-**File** instead of the printer, pick **Tab delimited file**, and save it as
-`journal.txt`. RapidBooks reads both.
+Then, for each five years, set **Dates** (top of the report) to **Custom** and export:
 
-**A long history does not fit in one file.** Her QuickBooks 2013 stopped the .csv export
-at 32,768 rows (about seven years of her transactions). So instead of Dates **All**,
-export the Journal several times, five years at a time, with Dates **Custom**: From
-01/01/1996 To 12/31/2000 → `journal-1996.csv`, From 01/01/2001 To 12/31/2005 →
-`journal-2001.csv`, and so on up to *DATE*. Overlapping ranges do no harm (a
-transaction in two files is imported once), but a gap loses everything in it, so make
-each range start the day after the previous one ends. If a file is still cut off, the
-import says so ("the export was cut off"): split that range in two.
+| From | To | Save as |
+|---|---|---|
+| 01/01/1996 | 12/31/2000 | `journal01.csv` |
+| 01/01/2001 | 12/31/2005 | `journal02.csv` |
+| 01/01/2006 | 12/31/2010 | `journal03.csv` |
+| 01/01/2011 | 12/31/2015 | `journal04.csv` |
+| 01/01/2016 | 12/31/2020 | `journal05.csv` |
+| 01/01/2021 | 12/31/2024 | `journal06.csv` |
+| 01/01/2025 | *DATE* | `journal07.csv` |
+
+To export: click **Export...**, choose **a comma separated values (.csv) file**, click
+**Export** and save under the name in the table. (If your QuickBooks has no Export
+button that makes a .csv file: **Print**, choose **File** instead of the printer, pick
+**Tab delimited file**, and save as `journal01.txt` and so on; RapidBooks reads both.)
+
+Any names starting with `journal` work, and their order does not matter (they are sorted
+by date). Overlapping ranges do no harm (a transaction in two files is imported once),
+but a **gap loses everything in it**: start each range the day after the previous one
+ends. If a file is still too long, the import says "the export was cut off": split that
+range in two. (A single `journal.csv` with Dates **All** is fine for a short history.)
 
 ### 1.3 Trial Balance → `tb.csv`
 
 **Reports > Accountant & Taxes > Trial Balance**. **Modify Report**: Dates **Custom**,
-From blank (or the first day of the year), To *DATE*. **OK**, then **Export** to
-`tb.csv` as above.
+From blank, To *DATE*. **OK**, then **Export** to `tb.csv` as above. (From the first day
+of the year works too; the import tells which it is.) The import reads *DATE* from this
+report's heading.
 
 ### 1.4 Open Invoices → `open-invoices.csv`
 
@@ -84,22 +108,21 @@ instead, still named `open-invoices.csv`. It checks the total per customer only.
 **Reports > Vendors & Payables > Unpaid Bills Detail**, Dates: *DATE*. Export to
 `unpaid-bills.csv`. (Or the **A/P Aging Summary**, same name.)
 
-### 1.6 Profit & Loss, one file per year → `pl-2024.csv`, `pl-2025.csv`, ...
+### 1.6 Profit & Loss by month → `pl-monthly.csv`
 
-**Reports > Company & Financial > Profit & Loss Standard**. Modify Report: Dates
-**Custom**, From 01/01/2025 To 12/31/2025 (one calendar year). Export to `pl-2025.csv`.
-Repeat for each year you want checked (at least the last two, ideally every year).
+**Reports > Company & Financial > Profit & Loss Standard**. Modify Report: Dates **All**,
+and in **Columns** (top of the Display tab) choose **Month**. **OK**, then **Export** to
+`pl-monthly.csv`. It is wide (one column per month since 1996); that is expected.
 
-Instead of one file per year you may make one file with every year side by side:
-Dates **All**, and in **Columns** (top of the Display tab) choose **Year**. Save it as
-`pl-all.csv`.
+It is **needed**, not just a check: her Journal names some accounts alike (Lease:mill and
+Supplies:tooling:mill both appear as "mill"; see 9.6), and in each month the rows named
+"mill" must make up exactly what this report shows for each of the two accounts. There is
+nearly always only one way to do that; on her books it decided all of them. It also
+checks every account for every month.
 
-**Best: one file by month** → `pl-monthly.csv`. Dates **All**, Columns **Month**. It
-checks every account for every month, and it is what tells apart accounts the Journal
-names alike (Lease:mill and Supplies:tooling:mill both appear as "mill"; see 9.6): in
-each month the rows named "mill" must make up exactly what QuickBooks shows for each of
-the two accounts, and there is nearly always only one way to do that. On her books it
-decided all of them.
+Optionally, more Profit & Loss files (any name starting with `pl`): one calendar year,
+Dates **Custom** From 01/01/2025 To 12/31/2025, as `pl-2025.csv`; or every year side by
+side, Dates **All**, Columns **Year**, as `pl-all.csv`.
 
 ### 1.7 Purchase orders and estimates
 
@@ -111,8 +134,10 @@ are still open in RapidBooks by hand after cutover. Estimates are not carried ov
 
 ## 2. Copy the files to the RapidBooks computer
 
-Copy the `qb-export` folder into the RapidBooks folder (the one that contains
-`packages` and `data`), so you have for example `rapidbooks/qb-export/journal.csv`.
+Copy every file of `qb-export` into the folder `data/qb-exports` inside the RapidBooks
+folder (the one that contains `packages` and `deploy`), so you have for example
+`rapidbooks/data/qb-exports/journal01.csv`. Replace the files of an earlier run; leftover
+files from an older export would be read too.
 
 ---
 
@@ -136,26 +161,26 @@ Open a terminal in the RapidBooks folder and type (one line; `\` continues a lin
 
 ```
 npx tsx packages/server/src/import/cli.ts \
-  --iif qb-export/lists.iif \
-  --journal qb-export/journal-1996.csv --journal qb-export/journal-2001.csv \
-  --journal qb-export/journal-2006.csv --journal qb-export/journal-2011.csv \
-  --journal qb-export/journal-2016.csv --journal qb-export/journal-2021.csv \
-  --journal qb-export/journal-2026.csv \
-  --trial-balance qb-export/tb.csv --as-of 2026-10-31 \
-  --open-invoices qb-export/open-invoices.csv --unpaid-bills qb-export/unpaid-bills.csv \
-  --profit-loss qb-export/pl-monthly.csv \
-  --profit-loss qb-export/pl-2024.csv --profit-loss qb-export/pl-2025.csv \
-  --out data/trial.db --report qb-export/reconciliation.txt
+  --iif data/qb-exports/lists.iif \
+  --journal data/qb-exports/journal01.csv --journal data/qb-exports/journal02.csv \
+  --journal data/qb-exports/journal03.csv --journal data/qb-exports/journal04.csv \
+  --journal data/qb-exports/journal05.csv --journal data/qb-exports/journal06.csv \
+  --journal data/qb-exports/journal07.csv \
+  --trial-balance data/qb-exports/tb.csv --as-of 2026-10-31 \
+  --open-invoices data/qb-exports/open-invoices.csv --unpaid-bills data/qb-exports/unpaid-bills.csv \
+  --profit-loss data/qb-exports/pl-monthly.csv \
+  --out data/trial.db --report data/trial-reconciliation.txt
 ```
 
-- Replace `2026-10-31` with *DATE*, written year-month-day.
+- Replace `2026-10-31` with *DATE*, written year-month-day. By hand, write each file
+  name exactly as it is, letter case included (on Linux `lists.IIF` is not `lists.iif`).
 - Give one `--journal` per Journal file, in any order (they are sorted by date). With a
-  single file, one `--journal qb-export/journal.csv` is enough. Use `.txt` names if that
+  single file, one `--journal data/qb-exports/journal.csv` is enough. Use `.txt` names if that
   is what you made.
 - Leave out any report you did not make. Without any, the import still works and prints
   RapidBooks' own trial balance for you to compare by eye.
 - A Profit & Loss file whose only amount column is headed "TOTAL" needs its dates:
-  `--profit-loss qb-export/pl.csv --pl-from 2025-01-01 --pl-to 2025-12-31`.
+  `--profit-loss data/qb-exports/pl.csv --pl-from 2025-01-01 --pl-to 2025-12-31`.
 - If her fiscal year does not start in January, add `--fiscal-year-start 7` (the month).
 - `--out` is the company file to create. For a trial run use `data/trial.db`. It
   **never overwrites** an existing file: if it exists you get a message and nothing

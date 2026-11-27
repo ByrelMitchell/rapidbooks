@@ -24,8 +24,8 @@
 #
 # Files are found in the export folder by name, in any letter case:
 #   lists.iif                     the lists (required)
-#   journal01.csv, journal02.csv  the Journal, one file per date range (or one journal.csv);
-#                                 when numbered files exist, a plain journal.csv is ignored
+#   journal*.csv                  the Journal, one file per date range (journal01.csv,
+#                                 journal-2001.csv...); a plain journal.csv only if alone
 #   tb.csv                        Trial Balance; the as-of date is read from its heading
 #   open-invoices.csv, unpaid-bills.csv
 #   pl*.csv                       Profit & Loss exports (pl-monthly.csv, pl-2025.csv, ...)
@@ -102,7 +102,9 @@ if [ -z "$IIF" ]; then
   [ "${#IIFS[@]}" -eq 1 ] && IIF="${IIFS[0]}"
 fi
 [ -n "$IIF" ] || die "No lists.iif in $EXPORTS (the list export, any letter case)."
-mapfile -t JOURNALS < <(find_files 'journal[0-9]*.csv'; find_files 'journal[0-9]*.txt')
+# The Journal: every journal*.csv (journal01.csv, journal-2001.csv...). A plain
+# journal.csv is used only when it is the only one (it is usually an old, cut-off export).
+mapfile -t JOURNALS < <(find_files 'journal?*.csv' | grep -vix 'journal.csv'; find_files 'journal?*.txt' | grep -vix 'journal.txt')
 [ "${#JOURNALS[@]}" -gt 0 ] || mapfile -t JOURNALS < <(find_files 'journal.csv'; find_files 'journal.txt')
 [ "${#JOURNALS[@]}" -gt 0 ] || die "No journal*.csv in $EXPORTS."
 TB="$(one_file 'tb.csv')"; [ -n "$TB" ] || TB="$(one_file 'tb.txt')"
