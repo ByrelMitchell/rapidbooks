@@ -53,7 +53,7 @@ interface Acct {
   role: string | null;
 }
 
-function accounts(db: DB): { list: Acct[]; byFull: Map<string, Acct> } {
+export function accounts(db: DB): { list: Acct[]; byFull: Map<string, Acct> } {
   const rows = db.prepare('SELECT id, name, type, parent_id, system_role FROM accounts').all() as {
     id: number;
     name: string;
@@ -75,7 +75,7 @@ function accounts(db: DB): { list: Acct[]; byFull: Map<string, Acct> } {
 const key = (s: string) => s.toLowerCase().replace(/"/g, "'");
 
 /** The account a report line names: its label, with as many of the group labels above it as make a known account. */
-function resolve(line: AccountLine, byFull: Map<string, Acct>): Acct | undefined {
+export function resolve(line: AccountLine, byFull: Map<string, Acct>): Acct | undefined {
   const other = PARENT_OTHER.test(line.label);
   const label = line.label.replace(PARENT_OTHER, '');
   const path = other && line.path.length > 0 && line.path[line.path.length - 1].toLowerCase() === label.toLowerCase() ? line.path.slice(0, -1) : line.path;
@@ -330,7 +330,7 @@ function compareProfitLoss(db: DB, data: Uint8Array | string, fallback?: { from:
   const { list, byFull } = accounts(db);
   const pl = parseProfitLoss(data, fallback);
   const byId = new Map(list.map((a) => [a.id, a]));
-  return pl.periods.map((p, pi) => {
+  const sections = pl.periods.map((p, pi) => {
     const differences: string[] = pi === 0 ? [...pl.warnings] : [];
     const sums = new Map(
       (
@@ -371,6 +371,23 @@ function compareProfitLoss(db: DB, data: Uint8Array | string, fallback?: { from:
     if (qn !== null && qn !== net) differences.push(`Net Income: QuickBooks ${money(qn)}, RapidBooks ${money(net)}`);
     return { title: `Profit & Loss ${usDate(p.from)} - ${usDate(p.to)}`, status: differences.length ? 'FAIL' : 'PASS', lines, differences } as Section;
   });
+  if (sections.length <= 12) return sections;
+  // A report by month over many years: one section, with only the periods that differ.
+  const failed = sections.filter((s) => s.status === 'FAIL');
+  const first = pl.periods[0];
+  const last = pl.periods[pl.periods.length - 1];
+  return [
+    {
+      title: `Profit & Loss by period, ${usDate(first.from)} - ${usDate(last.to)} (${sections.length} periods)`,
+      status: failed.length ? 'FAIL' : 'PASS',
+      lines: [
+        failed.length
+          ? `${sections.length - failed.length} of ${sections.length} periods agree on every account and Net Income; the others are listed below.`
+          : `All ${sections.length} periods agree on every account and on Net Income.`,
+      ],
+      differences: failed.flatMap((s) => s.differences.map((d) => `${s.title.replace('Profit & Loss ', '')}: ${d}`)),
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +425,29 @@ export function reconcile(db: DB, h: HistoryResult, input: ReconcileInput): Reco
     lines: h.skipped.length ? [] : ['None.'],
     differences: h.skipped.map((s) => `${s.file ? `${s.file} ` : ''}line ${s.line}: ${s.qbType || '(no type)'}${s.transNo ? ` Trans # ${s.transNo}` : ''}${s.num ? ` no. ${s.num}` : ''} of ${s.date || '(no date)'}: ${s.reason}`),
   });
+
+  if (h.sharedNames.length > 0) {
+    // Names the Journal gives several accounts (it prints only the last part of a name).
+    const lines = [
+      'The Journal names these accounts alike. Each row was given to the account that makes',
+      "QuickBooks' Profit & Loss agree, period by period (rows of 0.00 go with their vendor).",
+      '',
+    ];
+    const differences: string[] = [];
+    for (const g of h.sharedNames) {
+      lines.push(`"${g.name}" = ${g.accounts.join(' or ')}: ${g.resolved} of ${g.rows} rows decided over ${g.periods} periods.`);
+      const left = g.rows - g.resolved;
+      if (left === 0) continue;
+      const why = [
+        g.note,
+        g.ambiguous.length ? `more than one way to make the amounts in ${g.ambiguous.join(', ')}` : '',
+        g.inconsistent.length ? `the rows cannot make QuickBooks' amounts in ${g.inconsistent.join(', ')}` : '',
+        g.outside ? `${g.outside} rows are outside the report's periods` : '',
+      ].filter((s) => s);
+      differences.push(`"${g.name}": ${left} rows left in a created account "${g.name}" (${why.join('; ')}).`);
+    }
+    sections.push({ title: 'Accounts sharing a name', status: differences.length ? 'FAIL' : 'PASS', lines, differences });
+  }
 
   {
     const lines: string[] = [];

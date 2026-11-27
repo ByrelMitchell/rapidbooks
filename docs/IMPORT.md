@@ -94,6 +94,13 @@ Instead of one file per year you may make one file with every year side by side:
 Dates **All**, and in **Columns** (top of the Display tab) choose **Year**. Save it as
 `pl-all.csv`.
 
+**Best: one file by month** → `pl-monthly.csv`. Dates **All**, Columns **Month**. It
+checks every account for every month, and it is what tells apart accounts the Journal
+names alike (Lease:mill and Supplies:tooling:mill both appear as "mill"; see 9.6): in
+each month the rows named "mill" must make up exactly what QuickBooks shows for each of
+the two accounts, and there is nearly always only one way to do that. On her books it
+decided all of them.
+
 ### 1.7 Purchase orders and estimates
 
 These do not post to the books and are not in the Journal. Print the **Open Purchase
@@ -122,6 +129,7 @@ npx tsx packages/server/src/import/cli.ts \
   --journal qb-export/journal-2026.csv \
   --trial-balance qb-export/tb.csv --as-of 2026-10-31 \
   --open-invoices qb-export/open-invoices.csv --unpaid-bills qb-export/unpaid-bills.csv \
+  --profit-loss qb-export/pl-monthly.csv \
   --profit-loss qb-export/pl-2024.csv --profit-loss qb-export/pl-2025.csv \
   --out data/trial.db --report qb-export/reconciliation.txt
 ```
@@ -337,8 +345,11 @@ so it can be adjusted quickly. On the first trial run, check these:
    by the **Account Type** column (add it in Modify Report), then by its exact
    capitalisation ("Swiss" and "swiss" are different accounts), then by the accounts the
    line's item posts to. A name still shared by two accounts of the same type ("electric":
-   Supplies:electric and Utilities:electric) is imported into one created account of
-   that name, which the Trial Balance shows as differing. The inch mark is matched either
+   Supplies:electric and Utilities:electric) is decided from the Profit & Loss by month
+   (1.6): each row goes to the account that makes every month agree; rows of 0.00 go
+   with their vendor. The reconciliation's "Accounts sharing a name" says how each was
+   decided. Without that report, or where a month allows two different answers, the rows
+   go into one created account of that name, which the Trial Balance shows as differing. The inch mark is matched either
    way: the list export writes 1' bar where the Journal has 1" bar.
 7. Item names in the Item column are full names or unique short names. QuickBooks 2013
    writes "Name (Description)", or "(Description)" for a line without an item; the

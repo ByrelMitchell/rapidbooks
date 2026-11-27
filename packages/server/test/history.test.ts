@@ -67,6 +67,10 @@ describe('reading report exports', () => {
     expect(parsePeriodHeader('Jan - Dec 25')).toEqual({ from: '2025-01-01', to: '2025-12-31' });
     expect(parsePeriodHeader('Jul 1, 24 - Jun 30, 25')).toEqual({ from: '2024-07-01', to: '2025-06-30' });
     expect(parsePeriodHeader('2004')).toEqual({ from: '2004-01-01', to: '2004-12-31' });
+    // A report by month: each column headed by the day its month ends (or the report does).
+    expect(parsePeriodHeader('Feb 29, 96')).toEqual({ from: '1996-02-01', to: '1996-02-29' });
+    expect(parsePeriodHeader('Nov 23, 26')).toEqual({ from: '2026-11-01', to: '2026-11-23' });
+    expect(parsePeriodHeader('Feb 30, 25')).toBeNull();
   });
 
   it('splits quoted fields with delimiters, quotes and line breaks, and decodes Windows-1252', () => {
@@ -439,6 +443,63 @@ describe('QuickBooks 2013 exports: last account names only, flat reports', () =>
     const applied = db.prepare(`SELECT f.type AS f, t.type AS t FROM links l JOIN txns f ON f.id = l.from_txn JOIN txns t ON t.id = l.to_txn WHERE l.kind = 'apply'`).all() as { f: string; t: string }[];
     expect(new Set(applied.map((a) => a.f))).toEqual(new Set(['Discount', 'PAYMENT']));
     expect(applied.map((a) => a.t)).toContain('CHECK');
+  });
+
+  it('decides accounts sharing a name from a Profit & Loss by month', () => {
+    const shared = [
+      t('!ACCNT', 'NAME', 'ACCNTTYPE', 'EXTRA'),
+      t('ACCNT', 'Checking', 'BANK', ''),
+      t('ACCNT', 'Utilities', 'EXP', ''),
+      t('ACCNT', 'Utilities:electric', 'EXP', ''),
+      t('ACCNT', 'Supplies', 'EXP', ''),
+      t('ACCNT', 'Supplies:electric', 'EXP', ''),
+    ].join('\r\n');
+    const check = (no: number, date: string, vendor: string, amount: string) => [
+      `"${no}","Check","${date}","${no}","${vendor}",,"Checking","",${amount},"Bank"`,
+      `,,,,"${vendor}",,"electric",${amount},"","Expense"`,
+      `,,,,,,,${amount},${amount},`,
+    ];
+    const j = [
+      '"Trans #","Type","Date","Num","Name","Memo","Account","Debit","Credit","Account Type"',
+      ...check(1, '01/10/2025', 'NIPSCO', '120.00'),
+      ...check(2, '01/20/2025', 'Goshen Electric', '35.50'),
+      ...check(3, '02/10/2025', 'NIPSCO', '118.00'),
+      ...check(4, '02/12/2025', 'NIPSCO', '60.00'), // a NIPSCO charge booked to Supplies
+      ...check(5, '02/20/2025', "Menard's", '0.00'),
+      '"TOTAL",,,,,,,333.50,333.50,',
+    ].join('\r\n');
+    const byMonth = [
+      ',"Jan 31, 25","Feb 28, 25","TOTAL"',
+      '"Ordinary Income/Expense","","",""',
+      '"Expense","","",""',
+      '"Supplies","","",""',
+      '"electric",35.50,60.00,95.50',
+      '"Total Supplies",35.50,60.00,95.50',
+      '"Utilities","","",""',
+      '"electric",120.00,118.00,238.00',
+      '"Total Utilities",120.00,118.00,238.00',
+      '"Total Expense",155.50,178.00,333.50',
+      '"Net Ordinary Income",-155.50,-178.00,-333.50',
+      '"Net Income",-155.50,-178.00,-333.50',
+    ].join('\r\n');
+    const h = importHistory(db, { iif: Buffer.from(shared), journal: j, profitLoss: [{ data: byMonth }] });
+    expect(h.createdAccounts).toEqual([]);
+    const parentOf = (no: string) => {
+      const s = txn(no).splits[1];
+      return (db.prepare('SELECT p.name FROM accounts a JOIN accounts p ON p.id = a.parent_id WHERE a.id = ?').get(s.account_id) as { name: string }).name;
+    };
+    // The 0.00 check has no other row of its vendor to follow: it goes to the larger account.
+    expect(['1', '2', '3', '4', '5'].map(parentOf)).toEqual(['Utilities', 'Supplies', 'Utilities', 'Supplies', 'Utilities']);
+    expect(h.sharedNames).toEqual([expect.objectContaining({ name: 'electric', rows: 5, resolved: 5, periods: 2 })]);
+    const rec = reconcile(db, h, { profitLoss: [{ data: byMonth }] });
+    expect(rec.sections.find((s) => s.title === 'Accounts sharing a name')?.status).toBe('PASS');
+    expect(rec.pass).toBe(true);
+
+    // Without the report the rows stay together in a created account, and say so.
+    db = openDb(':memory:');
+    const h2 = importHistory(db, { iif: Buffer.from(shared), journal: j });
+    expect(h2.createdAccounts).toEqual(['electric (EXP)']);
+    expect(reconcile(db, h2, {}).sections.find((s) => s.title === 'Accounts sharing a name')?.differences[0]).toMatch(/no Profit & Loss was given/);
   });
 
   it('reconciles a flat Profit & Loss and an all-dates Trial Balance', () => {

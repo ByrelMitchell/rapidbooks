@@ -132,7 +132,7 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
     removeDb(temp);
     db = openDb(temp); // deliberately no seedDefaults(): the chart of accounts comes from the lists
     const openAsOf = opt['--open-as-of'] ?? opt['--as-of'];
-    const h = importHistory(db, { iif: files.iif, journal: files.journal, openInvoices: files.oi, unpaidBills: files.ub, asOf: openAsOf });
+    const h = importHistory(db, { iif: files.iif, journal: files.journal, openInvoices: files.oi, unpaidBills: files.ub, asOf: openAsOf, profitLoss: files.pl });
     const input: ReconcileInput = {
       trialBalance: files.tb,
       asOf: opt['--as-of'],

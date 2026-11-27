@@ -14,7 +14,9 @@ import { createName } from '../lists/names';
 import { importIif } from './iif';
 import { parseJournals, type JournalFile, type JournalFileSummary, type JournalRow, type JournalTxn } from './journal';
 import { CREDIT_QB_TYPES, norm, PAID_VALUES, TYPE_MAP } from './layout';
-import { parseOpenDocs, type OpenDocsReport } from './reports';
+import { accounts as reconcileAccounts, resolve as resolveLine } from './reconcile';
+import { parseOpenDocs, parseProfitLoss, type OpenDocsReport } from './reports';
+import { resolveSharedNames, type AmbiguousRow, type GroupReport, type Period } from './resolve';
 
 // The history importer: a fresh company from QuickBooks' list export (IIF) and its
 // Journal report export. See docs/IMPORT.md.
@@ -40,6 +42,29 @@ export interface HistoryInput {
   unpaidBills?: Uint8Array | string;
   /** The date those two reports are as of (default: the last transaction's date). */
   asOf?: string;
+  /**
+   * Profit & Loss exports, best one by month: they decide accounts the Journal names the
+   * same (resolve.ts). The reconciliation compares them too.
+   */
+  profitLoss?: { data: Uint8Array | string; from?: string; to?: string }[];
+}
+
+/** QuickBooks' Profit & Loss amounts of the given accounts, per period, debit positive. */
+function profitLossPeriods(db: DB, files: NonNullable<HistoryInput['profitLoss']>, wanted: Set<number>): Period[] {
+  const { byFull } = reconcileAccounts(db);
+  const out: Period[] = [];
+  for (const f of files) {
+    const pl = parseProfitLoss(f.data, f.from && f.to ? { from: f.from, to: f.to } : undefined);
+    const periods: Period[] = pl.periods.map((p) => ({ ...p, amounts: new Map() }));
+    for (const l of pl.lines) {
+      const a = resolveLine(l, byFull);
+      if (!a || !wanted.has(a.id)) continue;
+      const sign = a.type === 'INC' || a.type === 'OINC' ? -1 : 1; // shown positive: income is a credit
+      l.amounts.forEach((v, i) => periods[i].amounts.set(a.id, (periods[i].amounts.get(a.id) ?? 0) + sign * v));
+    }
+    out.push(...periods);
+  }
+  return out;
 }
 
 export interface TypeCount {
@@ -80,6 +105,8 @@ export interface HistoryResult {
   journalFiles: JournalFileSummary[];
   /** Transactions found in two Journal files (overlapping dates), imported once. */
   journalDuplicates: number;
+  /** Names several accounts share in the Journal, and how their rows were decided. */
+  sharedNames: (GroupReport & { name: string; accounts: string[] })[];
   rowsRead: number;
   txnsRead: number;
   txnsImported: number;
@@ -201,6 +228,18 @@ class Lookups {
     const k = nameKey(full);
     const hit = this.accounts.get(k);
     if (k.includes(':')) return hit ?? this.created.get(k);
+    const leaf = this.narrow(full, type, hint);
+    if (leaf.length === 1) return leaf[0];
+    if (hit && leaf.includes(hit)) return hit; // still several: the top-level one, as written
+    return this.created.get(k);
+  }
+
+  /**
+   * The accounts on the lists a name without a colon may be. Several, all of one type and
+   * capitalisation, when the Journal cannot tell them apart (see resolve.ts).
+   */
+  narrow(full: string, type = '', hint: (number | null)[] = []): AccountInfo[] {
+    const k = nameKey(full);
     // A name without a colon may be a top-level account or the last part of any account:
     // narrow by the row's Account Type, then the exact capitalisation (the Journal keeps
     // each account's own: "Swiss" vs "swiss"), then the accounts the row's item posts to.
@@ -212,9 +251,7 @@ class Lookups {
     if (leaf.length > 1 && type) narrow((a) => a.type === type);
     if (leaf.length > 1) narrow((a) => a.full.split(':').pop()!.replace(/"/g, "'") === full.trim().replace(/"/g, "'"));
     if (leaf.length > 1 && hint.length) narrow((a) => hint.includes(a.id));
-    if (leaf.length === 1) return leaf[0];
-    if (hit && leaf.includes(hit)) return hit; // still several: the top-level one, as written
-    return this.created.get(k);
+    return leaf;
   }
 
   findItem(full: string): ItemInfo | undefined {
@@ -329,6 +366,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
     journalColumns: journal.columns,
     journalFiles: journal.files,
     journalDuplicates: journal.duplicates,
+    sharedNames: [],
     delimiter: journal.delimiter === '\t' ? 'tab' : 'comma',
     rowsRead: journal.rowsRead,
     txnsRead: journal.txns.length,
@@ -491,10 +529,27 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
           return amount > 0 ? 'EXP' : 'INC';
       }
     };
-    const accountId = (r: JournalRow, type: string, rowIndex: number): number => {
+    // Rows whose name several accounts share, decided from the Profit & Loss once every
+    // row is read (resolve.ts). Until then their split has account_id 0.
+    const shared: { row: AmbiguousRow; split: ImportSplit; r: JournalRow; type: string; rowIndex: number }[] = [];
+    const accountId = (r: JournalRow, type: string, rowIndex: number, date: string, vendor: string, split: ImportSplit): number => {
       const full = r.account;
       const item = r.item ? L.findItem(r.item) : undefined;
-      const hit = L.findAccount(full, r.accountType, item ? [item.account_id, item.purchase_account_id] : []);
+      const hint = item ? [item.account_id, item.purchase_account_id] : [];
+      const hit = L.findAccount(full, r.accountType, hint);
+      const top = L.accounts.get(nameKey(full));
+      const cands = full.includes(':') ? [] : L.narrow(full, r.accountType, hint);
+      if (cands.length > 1 && !(top && cands.includes(top))) {
+        const ids = cands.map((a) => a.id).sort((x, y) => x - y);
+        shared.push({ row: { key: shared.length, group: `${nameKey(full)}|${ids.join(',')}`, candidates: ids, date, amount: r.amount, vendor }, split, r, type, rowIndex });
+        return 0;
+      }
+      if (hit) return hit.id;
+      return createdAccount(r, type, rowIndex);
+    };
+    const createdAccount = (r: JournalRow, type: string, rowIndex: number): number => {
+      const full = r.account;
+      const hit = L.created.get(nameKey(full));
       if (hit) return hit.id;
       const segs = full.split(':').map((s) => s.trim());
       let parent: AccountInfo | undefined;
@@ -517,17 +572,36 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
     };
 
     phase("lists");
-    // --- Plan and write every transaction (header and splits, verbatim).
+    // --- Every transaction's splits, verbatim; then the accounts that share a name.
+    const drafts = good.map(({ qb, type, map }) => {
+      const vendor = qb.rows[0].name || qb.rows[0].source;
+      const splits: ImportSplit[] = qb.rows.map((r) => ({ account_id: 0, amount: r.amount, name_id: nameId(r.name), memo: r.memo, cleared: r.cleared }));
+      qb.rows.forEach((r, i) => (splits[i].account_id = accountId(r, type, i, qb.date!, r.name || vendor, splits[i])));
+      return { qb, type, map, splits };
+    });
+    if (shared.length > 0) {
+      // What each candidate account has per date from rows that were not ambiguous.
+      const cand = new Set(shared.flatMap((s) => s.row.candidates));
+      const known = new Map<number, { date: string; amount: number }[]>();
+      for (const d of drafts) {
+        for (const s of d.splits) if (cand.has(s.account_id)) known.set(s.account_id, [...(known.get(s.account_id) ?? []), { date: d.qb.date!, amount: s.amount }]);
+      }
+      const fixed = (acct: number, from: string, to: string) => (known.get(acct) ?? []).reduce((t, x) => t + (x.date >= from && x.date <= to ? x.amount : 0), 0);
+      const { assign, groups } = resolveSharedNames(
+        shared.map((s) => s.row),
+        profitLossPeriods(db, input.profitLoss ?? [], cand),
+        fixed,
+      );
+      for (const s of shared) s.split.account_id = assign.get(s.row.key) ?? createdAccount(s.r, s.type, s.rowIndex);
+      const full = (id: number) => L.accountById.get(id)?.full ?? '?';
+      const written = new Map(shared.map((s) => [s.row.group, s.r.account]));
+      result.sharedNames = groups.map((g) => ({ ...g, name: written.get(g.group) ?? g.group.split('|')[0], accounts: g.candidates.map(full) }));
+    }
+
+    // --- Plan and write every transaction (header and splits).
     const plans: Plan[] = [];
-    for (const { qb, type, map } of good) {
+    for (const { qb, type, map, splits } of drafts) {
       const rows = qb.rows;
-      const splits: ImportSplit[] = rows.map((r, i) => ({
-        account_id: accountId(r, type, i),
-        amount: r.amount,
-        name_id: nameId(r.name),
-        memo: r.memo,
-        cleared: r.cleared,
-      }));
       const first = rows[0];
       const headName = nameId(first.name || first.source);
       const header = blankHeader({ date: qb.date!, num: qb.num, name_id: headName, memo: first.memo });

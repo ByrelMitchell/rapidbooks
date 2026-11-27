@@ -237,5 +237,15 @@ export function parsePeriodHeader(text: string): { from: string; to: string } | 
     const y1 = m[2] ? year(m[2]) : m1 <= m2 ? y2 : y2 - 1;
     return { from: `${y1}-${pad(m1)}-01`, to: `${y2}-${pad(m2)}-${pad(lastDay(y2, m2))}` };
   }
+  // A column of a report by month is headed by the day it ends: "jan 31, 96", and the
+  // last one by the report's own end date ("nov 23, 26"). The month up to that day.
+  m = /^([a-z]{3})[a-z]*\s+(\d{1,2}),?\s*'?(\d{2}|\d{4})$/.exec(t);
+  if (m) {
+    const mo = MONTHS.indexOf(m[1]) + 1;
+    const y = year(m[3]);
+    const d = Number(m[2]);
+    if (mo === 0 || d < 1 || d > lastDay(y, mo)) return null;
+    return { from: `${y}-${pad(mo)}-01`, to: `${y}-${pad(mo)}-${pad(d)}` };
+  }
   return null;
 }
