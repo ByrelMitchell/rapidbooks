@@ -23,6 +23,8 @@ export interface Settings {
   authFile: string;
   sessionFile: string;
   noAuth: boolean;
+  /** Without a password: names besides addresses, localhost and this machine's name that the server answers to. */
+  allowedHosts: string[];
   tlsCert: string | null;
   tlsKey: string | null;
 }
@@ -57,6 +59,7 @@ export function loadSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     authFile: resolve(opt('RAPIDBOOKS_AUTH_FILE') ?? resolve(dataDir, 'auth.json')),
     sessionFile: resolve(opt('RAPIDBOOKS_SESSION_FILE') ?? resolve(dataDir, 'sessions.json')),
     noAuth: truthy(env.RAPIDBOOKS_NO_AUTH),
+    allowedHosts: (opt('RAPIDBOOKS_ALLOWED_HOSTS') ?? '').split(/[\s,]+/).filter((h) => h !== ''),
     tlsCert: opt('RAPIDBOOKS_TLS_CERT'),
     tlsKey: opt('RAPIDBOOKS_TLS_KEY'),
   };

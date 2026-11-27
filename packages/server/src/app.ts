@@ -37,6 +37,8 @@ export interface AppOptions {
   mailer?: MailerFactory;
   /** Login (packages/server/src/auth). Omitted = open: no password set, loopback only. */
   auth?: AuthOptions;
+  /** Without auth: extra Host names to answer to (RAPIDBOOKS_ALLOWED_HOSTS). */
+  allowedHosts?: string[];
   /** Backups (packages/server/src/backup): the /api/backup routes exist only when given. */
   backup?: BackupService;
   /** Listen with TLS. */
@@ -50,7 +52,7 @@ export function buildApp(db: DB, opts: AppOptions = {}) {
   const app = Fastify((opts.https ? { https: opts.https } : {}) as FastifyHttpOptions<Server>);
   // Login comes first so its checks cover every route registered after it.
   recordRoutes(app);
-  installAuth(app, opts.auth);
+  installAuth(app, opts.auth, opts.allowedHosts);
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof AppError) return reply.status(err.status).send({ error: err.message });

@@ -36,13 +36,14 @@ import { isPurchasePrintable, loadPurchasePrintable, purchaseFileName, renderPur
 import { docFileName, loadSalesDoc, renderSalesDocPdf } from '../pdf/invoice';
 import { renderStatementPdf } from '../pdf/statement';
 import { renderStatementsPdf } from '../pdf/combined';
+import { contentDisposition } from './disposition';
 
 const Id = z.object({ id: z.coerce.number().int() });
 const DateQ = z.string().refine(isIsoDate, { message: 'Enter a valid date.' });
 const OptId = z.preprocess((v) => (v === undefined || v === '' ? null : v), z.coerce.number().int().nullable());
 const StatementQ = z.object({ customer_id: z.coerce.number().int(), from: DateQ, to: DateQ });
 
-const pdfName = (name: string) => `inline; filename="${name.replace(/"/g, '')}"`;
+const pdfName = (name: string) => contentDisposition('inline', name);
 
 /** Routes for Phase 3: sales and receivables. */
 export function registerSalesRoutes(app: FastifyInstance, db: DB, mailer: MailerFactory = smtpMailer) {

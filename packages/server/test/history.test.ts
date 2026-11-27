@@ -1,5 +1,5 @@
 import { TxnInput, type DocTxn, type PurchTxn } from '@rapidbooks/shared';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -10,6 +10,7 @@ import { itemName, parseJournal } from '../src/import/journal';
 import { openDocs, reconcile } from '../src/import/reconcile';
 import { decodeText, parseAmount, parsePeriodHeader, parseQbDate, tokenize } from '../src/import/table';
 import { getTxn, saveTxn } from '../src/ledger/posting';
+import { pidFileFor } from '../src/pidfile';
 
 const dir = join(import.meta.dirname, 'fixtures', 'history');
 const fx = (f: string) => readFileSync(join(dir, f));
@@ -720,6 +721,12 @@ describe('command line', () => {
 
     expect(runHistory(args, (s) => log.push(s), (s) => err.push(s))).toBe(2);
     expect(err.at(-1)).toMatch(/already exists/);
+
+    // --force never moves a company file a running server is using.
+    writeFileSync(pidFileFor(out), JSON.stringify({ pid: process.ppid, url: 'http://127.0.0.1:3001', started: '' }));
+    expect(runHistory([...args, '--force'], (s) => log.push(s), (s) => err.push(s))).toBe(2);
+    expect(err.at(-1)).toMatch(/RapidBooks is running on .*Stop it first/);
+    unlinkSync(pidFileFor(out));
 
     expect(runHistory([...args, '--force'], (s) => log.push(s), (s) => err.push(s))).toBe(1);
     expect(readdirSync(scratch).filter((f) => /^company\.db\.before-import-\d{8}-\d{6}$/.test(f))).toHaveLength(1);

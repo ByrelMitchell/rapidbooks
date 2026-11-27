@@ -88,7 +88,14 @@ if docker container inspect "$NAME" >/dev/null 2>&1; then
     install -d -m 0750 -o "$CONTAINER_UID" -g "$CONTAINER_UID" "$DATA_DIR/backups"
     COPY="$DATA_DIR/backups/before-update-$(date +%Y%m%d-%H%M%S).db"
     cp -p "$DATA_DIR/rapidbooks.db" "$COPY"
+    # A server that had to be killed leaves its last changes in the -wal file: keep them
+    # with the copy (SQLite reads <copy>-wal when the copy is opened).
+    if [ -s "$DATA_DIR/rapidbooks.db-wal" ]; then cp -p "$DATA_DIR/rapidbooks.db-wal" "$COPY-wal"; fi
     echo "Copied the database to $COPY"
+    # Keep the three newest of these copies; the nightly backups are kept separately.
+    ls -1t "$DATA_DIR"/backups/before-update-*.db 2>/dev/null | tail -n +4 | while read -r OLD; do
+      rm -f "$OLD" "$OLD-wal"
+    done
   fi
 fi
 

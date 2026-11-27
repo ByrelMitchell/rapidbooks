@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import { restoreBackup } from '../src/backup/restore';
 import { backupFileName } from '../src/backup/rotation';
 import { BackupService, verifyDatabaseFile } from '../src/backup/service';
 import { openDb, seedDefaults, type DB } from '../src/db';
-import { pidFileFor } from '../src/pidfile';
+import { pidFileFor, runningServer, STALE_MS } from '../src/pidfile';
 
 let dir: string;
 let db: DB;
@@ -135,7 +135,7 @@ describe('making a backup', () => {
     expect(svc.status().warning).toMatch(/failed/);
 
     const app = buildApp(db, { backup: svc });
-    const res = await app.inject({ method: 'POST', url: '/api/backup' });
+    const res = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/backup' });
     expect(res.statusCode).toBe(500);
     expect(res.json().error).toMatch(/does not exist/);
 
@@ -161,7 +161,7 @@ describe('making a backup', () => {
   it('serves the routes: run now, status, download', async () => {
     const svc = new BackupService({ db, dir: join(dir, 'backups'), time: null, log: quiet });
     const app = buildApp(db, { backup: svc });
-    const run = await app.inject({ method: 'POST', url: '/api/backup' });
+    const run = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/backup' });
     expect(run.statusCode).toBe(200);
     expect(run.json()).toMatchObject({ file: expect.stringMatching(/^rapidbooks-/), size: expect.any(Number), durationMs: expect.any(Number) });
 
@@ -220,6 +220,19 @@ describe('restore', () => {
     // Another live process (our parent) recorded as the server.
     writeFileSync(pidFileFor(dbPath), JSON.stringify({ pid: process.ppid, url: 'http://127.0.0.1:3001', started: '' }));
     expect(() => restoreBackup(good, dbPath)).toThrow(/is running on this database/);
+  });
+
+  it('refuses while a server in another container is running on it (a fresh file from another host)', async () => {
+    const good = await aBackup();
+    // In Docker the server's process is invisible here, and may even have our own number (1).
+    const f = pidFileFor(dbPath);
+    writeFileSync(f, JSON.stringify({ pid: process.pid, url: 'http://0.0.0.0:3001', started: '', host: 'another-container' }));
+    expect(runningServer(dbPath)).not.toBeNull();
+    expect(() => restoreBackup(good, dbPath)).toThrow(/docker stop rapidbooks/);
+    // Untouched for longer than the heartbeat allows: left over from a killed server.
+    const old = new Date(Date.now() - STALE_MS - 1000);
+    utimesSync(f, old, old);
+    expect(runningServer(dbPath)).toBeNull();
   });
 
   it('restores a good backup and keeps the old database aside', async () => {

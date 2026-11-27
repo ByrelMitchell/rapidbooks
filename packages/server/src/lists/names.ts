@@ -158,9 +158,11 @@ export function deleteName(db: DB, id: number) {
   const row = getRow(db, id);
   const used = db
     .prepare(
-      `SELECT EXISTS (SELECT 1 FROM txns WHERE name_id = ?) OR EXISTS (SELECT 1 FROM splits WHERE name_id = ?) AS used`,
+      // lines: a Customer:Job on a purchase order line, which posts no splits.
+      `SELECT EXISTS (SELECT 1 FROM txns WHERE name_id = ?) OR EXISTS (SELECT 1 FROM splits WHERE name_id = ?)
+              OR EXISTS (SELECT 1 FROM lines WHERE name_id = ?) AS used`,
     )
-    .get(id, id) as { used: number };
+    .get(id, id, id) as { used: number };
   if (used.used) {
     throw new AppError(400, `${row.name} has transactions and cannot be deleted. You can make it inactive instead.`);
   }

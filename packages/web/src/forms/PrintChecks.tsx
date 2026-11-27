@@ -1,4 +1,4 @@
-import { formatMoney, formatUsDate, TXN_TYPE_SHORT, type Account, type CheckNumUse, type CheckToPrint } from '@rapidbooks/shared';
+import { addToNum, formatMoney, formatUsDate, TXN_TYPE_SHORT, type Account, type CheckNumUse, type CheckToPrint } from '@rapidbooks/shared';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { api, errorMessage, useData } from '../api';
 import { Combo } from '../controls/Combo';
@@ -84,7 +84,7 @@ export function PrintChecks({ winId }: WinProps) {
       // Numbers already on this account in the range: a warning, as for a single check.
       const clashes: string[] = [];
       for (let i = 0; i < list.length; i++) {
-        const n = String(Number(first) + i);
+        const n = addToNum(first, i);
         const use = await api.get<CheckNumUse>(`/api/checks/num-used?account_id=${bankId}&num=${n}`).catch(() => null);
         if (use?.used) clashes.push(n);
       }

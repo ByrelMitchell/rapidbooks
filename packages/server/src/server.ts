@@ -56,6 +56,7 @@ export async function startServer(
   const app = buildApp(db, {
     webDist: s.webDist,
     auth,
+    allowedHosts: s.allowedHosts,
     backup,
     https,
     listen: { host: s.host, port: s.port, tls: !!https },

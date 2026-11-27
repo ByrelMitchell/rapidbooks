@@ -7,6 +7,7 @@ import { renderTxnsPdf } from '../pdf/combined';
 import { toCsv } from '../reports/engine';
 import { find, incomeExpenseGraph, optDate, salesGraph } from '../reports/find';
 import { listReports, runReport } from '../reports/registry';
+import { contentDisposition } from './disposition';
 
 // Phase 5: reports, Find, graphs, and combined form PDFs.
 
@@ -49,7 +50,7 @@ export function registerReportRoutes(app: FastifyInstance, db: DB) {
       const name = report.title.replace(/[\\/:*?"<>|]/g, '-');
       return reply
         .type('text/csv; charset=utf-8')
-        .header('Content-Disposition', `attachment; filename="${name}.csv"`)
+        .header('Content-Disposition', contentDisposition('attachment', `${name}.csv`))
         .send(toCsv(report));
     }
     return report;

@@ -27,7 +27,7 @@ import {
 import { deleteTxn, getRegister, getTxn, nextNum, removeApplication, saveTxn } from '../src/ledger/posting';
 import { adjacentTxns, findTxns, listCredits, listOpenInvoices } from '../src/ledger/receivables';
 import { createItem, getItem, listItems, updateItem } from '../src/lists/items';
-import { createName, listNames } from '../src/lists/names';
+import { createName, deleteName, listNames } from '../src/lists/names';
 import { createPayrollItem, deletePayrollItem, listPayrollItems } from '../src/lists/payroll';
 import { createTerms } from '../src/lists/terms';
 import { renderPurchasePdf } from '../src/pdf/check';
@@ -488,6 +488,22 @@ describe('checks', () => {
     const bl = simpleBill(100);
     expect(() => assignCheckNumbers(db, { txn_ids: [bl], first_num: '1' })).toThrow(/Only checks/);
   });
+
+  it('keeps leading zeros and every digit of check numbers', () => {
+    const a = check({ to_print: true, expenses: [{ account_id: rent, amount: 100 }] }).id;
+    const b = check({ to_print: true, expenses: [{ account_id: rent, amount: 100 }] }).id;
+    expect(assignCheckNumbers(db, { txn_ids: [a, b], first_num: '000099' }).map((x) => x.num)).toEqual(['000099', '000100']);
+    const b1 = simpleBill(100);
+    const b2 = simpleBill(100, { name_id: deburr });
+    const r = pay({ first_check_num: '90071992547409919', payments: [{ bill_id: b1, amount: 100 }, { bill_id: b2, amount: 100 }] });
+    expect(r.payments.map((p) => p.num).sort()).toEqual(['90071992547409919', '90071992547409920']);
+  });
+
+  it('a customer on a purchase order line cannot be deleted, with the usual message', () => {
+    const lonely = name('customer', 'Only On A PO');
+    po({ lines: [{ item_id: bar, qty: 1, rate: 710, name_id: lonely }] });
+    expect(() => deleteName(db, lonely)).toThrow(/Only On A PO has transactions and cannot be deleted/);
+  });
 });
 
 describe('transfers', () => {
@@ -794,14 +810,14 @@ describe('http api for purchases and banking', () => {
   it('round-trips purchase orders, bills, PDFs and lookups through /api/txns', async () => {
     const app = buildApp(db);
     const num = (await app.inject({ method: 'GET', url: '/api/txns/next-num?type=PURCHORD' })).json().num;
-    const p = await app.inject({ method: 'POST', url: '/api/txns', payload: { type: 'PURCHORD', date: '2026-03-01', num, name_id: steel, lines: [{ item_id: bar, qty: 10, rate: 710 }] } });
+    const p = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/txns', payload: { type: 'PURCHORD', date: '2026-03-01', num, name_id: steel, lines: [{ item_id: bar, qty: 10, rate: 710 }] } });
     expect(p.statusCode).toBe(200);
     const poId = p.json().id;
     expect((await app.inject({ method: 'GET', url: `/api/purchase-orders/open?vendor_id=${steel}` })).json()).toEqual([
       expect.objectContaining({ id: poId, num: '1', total: 7100 }),
     ]);
     const b = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: { type: 'BILL', date: '2026-03-02', ref_no: 'X1', name_id: steel, terms_id: net30, po_ids: [poId], items: [{ item_id: bar, qty: 10, rate: 710 }] },
     });
@@ -814,10 +830,10 @@ describe('http api for purchases and banking', () => {
     expect(pdf.headers['content-disposition']).toMatch(/Purchase Order 1\.pdf/);
     expect(pdf.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
     expect((await app.inject({ method: 'GET', url: '/api/txns/find?type=BILL&num=X1' })).json()).toHaveLength(1);
-    const bad = await app.inject({ method: 'POST', url: '/api/txns', payload: { type: 'BILL', date: '2026-03-02', name_id: steel, items: [{ item_id: labor, qty: 1, rate: 1 }] } });
+    const bad = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/txns', payload: { type: 'BILL', date: '2026-03-02', name_id: steel, items: [{ item_id: labor, qty: 1, rate: 1 }] } });
     expect(bad.statusCode).toBe(400);
     expect(bad.json().error).toMatch(/no purchase account/);
-    const tr = await app.inject({ method: 'POST', url: '/api/txns', payload: { type: 'TRANSFER', date: '2026-03-02', from_account_id: checking, to_account_id: savings, amount: 100 } });
+    const tr = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/txns', payload: { type: 'TRANSFER', date: '2026-03-02', from_account_id: checking, to_account_id: savings, amount: 100 } });
     expect(tr.statusCode).toBe(200);
   });
 
@@ -829,7 +845,7 @@ describe('http api for purchases and banking', () => {
     expect(unpaid).toEqual([expect.objectContaining({ id: b, open_balance: 10000, suggested_discount: 200, credits_available: 1000 })]);
     expect((await app.inject({ method: 'GET', url: `/api/vendors/${steel}/credits` })).json()).toEqual([expect.objectContaining({ id: c, unapplied: 1000 })]);
     const r = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/pay-bills',
       payload: {
         date: '2026-03-05', account_id: checking, method: 'check', to_print: true,
@@ -845,28 +861,28 @@ describe('http api for purchases and banking', () => {
       expect.objectContaining({ id: pid, type: 'BILLPMT', amount: 8800 }),
     ]);
     expect((await app.inject({ method: 'GET', url: `/api/txns/next-num?type=CHECK&account_id=${checking}` })).json()).toEqual({ num: '1' });
-    const as = await app.inject({ method: 'POST', url: '/api/checks/assign-numbers', payload: { txn_ids: [pid], first_num: '3001' } });
+    const as = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/checks/assign-numbers', payload: { txn_ids: [pid], first_num: '3001' } });
     expect(as.json()).toEqual({ assigned: [{ id: pid, num: '3001' }] });
     expect((await app.inject({ method: 'GET', url: `/api/checks/num-used?account_id=${checking}&num=3001` })).json()).toMatchObject({ used: true });
     expect((await app.inject({ method: 'GET', url: `/api/checks/num-used?account_id=${checking}&num=3001&exclude_id=${pid}` })).json()).toEqual({ used: false, txns: [] });
     const pdf = await app.inject({ method: 'GET', url: `/api/txns/${pid}/pdf` });
     expect(pdf.headers['content-disposition']).toMatch(/Bill Payment 3001\.pdf/);
-    const over = await app.inject({ method: 'POST', url: '/api/pay-bills', payload: { date: '2026-03-05', account_id: checking, payments: [{ bill_id: b, amount: 1 }] } });
+    const over = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/pay-bills', payload: { date: '2026-03-05', account_id: checking, payments: [{ bill_id: b, amount: 1 }] } });
     expect(over.statusCode).toBe(400);
     expect(over.json().error).toMatch(/more than its open balance of \$0.00/);
   });
 
   it('round-trips payroll items, paychecks and the year-to-date summary', async () => {
     const app = buildApp(db);
-    const created = await app.inject({ method: 'POST', url: '/api/payroll-items', payload: { name: 'Bonus', kind: 'earning', expense_account_id: wagesAcct } });
+    const created = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/payroll-items', payload: { name: 'Bonus', kind: 'earning', expense_account_id: wagesAcct } });
     expect(created.statusCode).toBe(200);
     const bonus = created.json().id;
     expect((await app.inject({ method: 'GET', url: `/api/payroll-items/${bonus}` })).json()).toMatchObject({ name: 'Bonus', kind_label: 'Earning' });
-    expect((await app.inject({ method: 'PUT', url: `/api/payroll-items/${bonus}`, payload: { name: 'Holiday Bonus', kind: 'earning', expense_account_id: wagesAcct } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/payroll-items/${bonus}`, payload: { name: 'Holiday Bonus', kind: 'earning', expense_account_id: wagesAcct } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/payroll-items' })).json().map((p: { name: string }) => p.name)).toContain('Holiday Bonus');
     expect((await app.inject({ method: 'GET', url: `/api/employees/${dave}/last-paycheck` })).json()).toEqual({ paycheck: null });
     const pc = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: { type: 'PAYCHECK', date: '2026-03-13', account_id: checking, name_id: dave, num: '10', lines: [{ payroll_item_id: bonus, amount: 50000 }, { payroll_item_id: fed, amount: 5000 }] },
     });
@@ -876,7 +892,7 @@ describe('http api for purchases and banking', () => {
     expect(sum.map((r: { payroll_item: string; amount: number }) => [r.payroll_item, r.amount])).toEqual([['Holiday Bonus', 50000], ['Federal Withholding', 5000]]);
     const pdf = await app.inject({ method: 'GET', url: `/api/txns/${pc.json().id}/pdf` });
     expect(pdf.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
-    const del = await app.inject({ method: 'DELETE', url: `/api/payroll-items/${bonus}` });
+    const del = await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/payroll-items/${bonus}` });
     expect(del.statusCode).toBe(400);
     expect(del.json().error).toMatch(/used on paychecks/);
   });

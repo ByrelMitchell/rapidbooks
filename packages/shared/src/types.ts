@@ -1094,6 +1094,9 @@ export const AssignCheckNumbersInput = z.object({
 });
 export type AssignCheckNumbersInput = z.infer<typeof AssignCheckNumbersInput>;
 
+/** A digits-only check number plus k, keeping its width and every digit: "000123" + 1 = "000124". */
+export const addToNum = (num: string, k: number): string => (BigInt(num) + BigInt(k)).toString().padStart(num.length, '0');
+
 /** Whether a check number is already used on a bank account (a warning, not a refusal). */
 export interface CheckNumUse {
   used: boolean;

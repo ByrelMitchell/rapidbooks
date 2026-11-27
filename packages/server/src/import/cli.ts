@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { isIsoDate } from '@rapidbooks/shared';
 import { openDb } from '../db';
 import { AppError } from '../errors';
+import { runningServer } from '../pidfile';
 import { importHistory } from './history';
 import { importIif } from './iif';
 import { reconcile, type ReconcileInput } from './reconcile';
@@ -117,6 +118,17 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
     err(`${out} already exists. RapidBooks never overwrites a company file: give another --out, or add --force to rename the old file (with a timestamp) and import anyway.`);
     return 2;
   }
+  const running = () => {
+    const server = runningServer(out);
+    return server
+      ? `RapidBooks is running on ${out} (${server.url}). Stop it first (sudo systemctl stop rapidbooks, or with Docker: sudo docker stop rapidbooks), then import again.`
+      : null;
+  };
+  const busy = running();
+  if (busy) {
+    err(busy);
+    return 2;
+  }
 
   const temp = `${out}.importing`;
   let db: ReturnType<typeof openDb> | null = null;
@@ -146,6 +158,9 @@ export function runHistory(argv: string[], log: (s: string) => void = console.lo
     db.close();
     db = null;
 
+    // The import takes a while: check again that nobody started the server meanwhile.
+    const started = running();
+    if (started) throw new AppError(1, started);
     let moved = '';
     if (existsSync(out)) {
       moved = `${out}.before-import-${stamp()}`;

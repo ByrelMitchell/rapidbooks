@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { hostname } from 'node:os';
 import { z } from 'zod';
 import { readAuthFile, verifyPassword } from './password';
 import { SESSION_DAYS, type SessionStore } from './sessions';
@@ -8,6 +9,7 @@ import { SESSION_DAYS, type SessionStore } from './sessions';
 // after repeated wrong passwords, and a required X-Requested-With header on every
 // state-changing /api request (a simple CSRF defence: a form on another site cannot
 // add a custom header, and a script on another site cannot send one without CORS).
+// Without a password the header is still required, and the Host is checked too.
 
 export const SESSION_COOKIE = 'rb_session';
 export const CSRF_HEADER = 'x-requested-with';
@@ -57,6 +59,7 @@ export class LoginThrottle {
   /** 0 = go ahead (the attempt is now counted as pending); otherwise ms to wait. */
   begin(ip: string): number {
     const t = this.now();
+    this.forgetQuiet(t);
     let e = this.entries.get(ip);
     if (e && t - e.last > FORGET_MS && e.pending === 0) {
       this.entries.delete(ip);
@@ -67,8 +70,9 @@ export class LoginThrottle {
       this.entries.set(ip, e);
     }
     if (t < e.until) return e.until - t;
-    // Past the free attempts, one try at a time.
-    if (e.failures >= FREE_ATTEMPTS && e.pending > 0) return 1000;
+    // Tries still being checked count against the free ones, so a burst sent all at once
+    // gets no more than FREE_ATTEMPTS guesses; past them, one try at a time.
+    if (e.pending > 0 && e.failures + e.pending >= FREE_ATTEMPTS) return 1000;
     e.pending++;
     e.last = t;
     return 0;
@@ -85,6 +89,19 @@ export class LoginThrottle {
 
   succeeded(ip: string) {
     this.entries.delete(ip);
+  }
+
+  /** How many addresses are remembered (for tests). */
+  get size(): number {
+    return this.entries.size;
+  }
+
+  private lastSweep = 0;
+  /** Forget addresses quiet for an hour, at most once a minute, so the table cannot grow for ever. */
+  private forgetQuiet(t: number) {
+    if (t - this.lastSweep < 60_000) return;
+    this.lastSweep = t;
+    for (const [ip, e] of this.entries) if (t - e.last > FORGET_MS && e.pending === 0) this.entries.delete(ip);
   }
 }
 
@@ -128,29 +145,56 @@ function isApi(req: FastifyRequest): boolean {
 }
 
 /**
- * Install login. With `opts` undefined the server runs open (no password set, bound to
- * loopback): /api/session says so and every route answers without a session.
+ * May an open server (no password) answer a request sent to this Host? A page on another
+ * site can point its own name at 127.0.0.1 ("DNS rebinding") and then read the server as
+ * if it were that site; the request still carries the other site's name in Host. So an
+ * open server answers only to an address (an IP literal cannot be rebound), localhost,
+ * this machine's own name, and the names listed in RAPIDBOOKS_ALLOWED_HOSTS.
  */
-export function installAuth(app: FastifyInstance, opts: AuthOptions | undefined) {
+export function hostAllowed(hostHeader: string | undefined, extra: readonly string[] = []): boolean {
+  if (hostHeader === undefined) return true; // not a browser: browsers always send Host
+  const h = hostHeader.trim().toLowerCase();
+  if (/^\[[0-9a-f:.]+\](:\d+)?$/.test(h)) return true; // [IPv6]:port
+  const name = h.replace(/:\d+$/, '').replace(/\.$/, '');
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+  if (name === 'localhost' || name.endsWith('.localhost')) return true;
+  const me = hostname().toLowerCase();
+  if (name === me || name === `${me}.local`) return true;
+  return extra.some((x) => x.trim().toLowerCase() === name);
+}
+
+/**
+ * Install login. With `opts` undefined the server runs open (no password set, bound to
+ * loopback): /api/session says so and every route answers without a session. Open or not,
+ * state-changing /api requests need the X-Requested-With header; open, /api requests must
+ * also be addressed to a name in hostAllowed (`allowedHosts`: RAPIDBOOKS_ALLOWED_HOSTS).
+ */
+export function installAuth(app: FastifyInstance, opts: AuthOptions | undefined, allowedHosts: readonly string[] = []) {
   const now = opts?.now ?? Date.now;
   const throttle = new LoginThrottle(now);
   const secure = (req: FastifyRequest) => !!opts?.secureCookie || req.protocol === 'https';
+  const sessions = opts?.sessions;
 
-  if (opts) {
-    const { sessions } = opts;
-    app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
-      if (!isApi(req)) return;
-      if (!SAFE_METHODS.has(req.method) && req.headers[CSRF_HEADER] !== CSRF_VALUE) {
-        return reply.status(403).send({ error: 'This request did not come from the RapidBooks window, so it was refused.' });
+  app.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!isApi(req)) return;
+    if (!SAFE_METHODS.has(req.method) && req.headers[CSRF_HEADER] !== CSRF_VALUE) {
+      return reply.status(403).send({ error: 'This request did not come from the RapidBooks window, so it was refused.' });
+    }
+    if (!sessions) {
+      if (!hostAllowed(req.headers.host, allowedHosts)) {
+        return reply.status(403).send({
+          error: `RapidBooks does not answer to the name "${req.headers.host}". To use that name, add it to RAPIDBOOKS_ALLOWED_HOSTS.`,
+        });
       }
-      const route = req.routeOptions?.url;
-      if (route !== undefined && PUBLIC.has(`${req.method} ${route}`)) return;
-      const token = readCookie(req, SESSION_COOKIE);
-      const s = sessions.touch(token);
-      if (!s.valid) return reply.status(401).send({ error: 'Please log in to RapidBooks.', login: true });
-      if (s.refreshed && token) reply.header('set-cookie', sessionCookie(token, secure(req)));
-    });
-  }
+      return;
+    }
+    const route = req.routeOptions?.url;
+    if (route !== undefined && PUBLIC.has(`${req.method} ${route}`)) return;
+    const token = readCookie(req, SESSION_COOKIE);
+    const s = sessions.touch(token);
+    if (!s.valid) return reply.status(401).send({ error: 'Please log in to RapidBooks.', login: true });
+    if (s.refreshed && token) reply.header('set-cookie', sessionCookie(token, secure(req)));
+  });
 
   app.get('/api/session', (req, reply) => {
     if (!opts) return { authenticated: true, authRequired: false };

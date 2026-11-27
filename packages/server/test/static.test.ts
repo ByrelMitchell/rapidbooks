@@ -64,7 +64,7 @@ describe('serving the built web app', () => {
     expect(api.statusCode).toBe(404);
     expect(api.headers['content-type']).toMatch(/json/);
     expect((await app.inject({ url: '/assets/index-OLD000.js' })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'POST', url: '/customers' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/customers' })).statusCode).toBe(404);
     // The API itself still works.
     expect((await app.inject({ url: '/api/accounts' })).statusCode).toBe(200);
   });

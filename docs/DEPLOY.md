@@ -56,6 +56,10 @@ After 5 wrong passwords from one computer, each further try has to wait (1 s, 2 
 Without a password RapidBooks only runs when it listens on 127.0.0.1 (this machine
 only). With `HOST=0.0.0.0` and no password it refuses to start and says why.
 `RAPIDBOOKS_NO_AUTH=1` overrides that, for people who really want an open server.
+Without a password the server answers only when the address bar shows an IP address,
+`localhost`, or this machine's own name (also `<name>.local`): a web page on another
+site cannot reach it by pointing its own name at this machine. To use another name,
+list it in `RAPIDBOOKS_ALLOWED_HOSTS`.
 
 ### Check it
 
@@ -79,6 +83,7 @@ changing it: `sudo systemctl restart rapidbooks`.
 | `RAPIDBOOKS_AUTH_FILE` | `<data folder>/auth.json` | The password hash |
 | `RAPIDBOOKS_SESSION_FILE` | `<data folder>/sessions.json` | Logged-in sessions (survive restarts) |
 | `RAPIDBOOKS_NO_AUTH` | unset | `1` = allow no password on a LAN address |
+| `RAPIDBOOKS_ALLOWED_HOSTS` | unset | Without a password: other names the server answers to (comma-separated) |
 | `RAPIDBOOKS_TLS_CERT`, `RAPIDBOOKS_TLS_KEY` | unset | Both set = HTTPS |
 | `RAPIDBOOKS_WEB_DIST` | `<app>/packages/web/dist` | The built web app |
 | `RAPIDBOOKS_SMTP_*` | | E-mail, see `docs/EMAIL.md` |

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app';
-import { CSRF_VALUE, FREE_ATTEMPTS, isLoopback, registeredRoutes, startupRefusal, type AuthOptions } from '../src/auth';
+import { CSRF_VALUE, FREE_ATTEMPTS, isLoopback, LoginThrottle, registeredRoutes, startupRefusal, type AuthOptions } from '../src/auth';
 import { hashPassword, setPassword, verifyPassword } from '../src/auth/password';
 import { SessionStore } from '../src/auth/sessions';
 import { BackupService } from '../src/backup/service';
@@ -191,6 +191,45 @@ describe('login', () => {
     const a = buildApp(db);
     expect((await a.inject({ url: '/api/accounts' })).statusCode).toBe(200);
     expect((await a.inject({ url: '/api/session' })).json()).toEqual({ authenticated: true, authRequired: false });
+  });
+
+  it('open, still requires X-Requested-With, and answers only to addresses, localhost and allowed names', async () => {
+    const a = buildApp(db, { allowedHosts: ['books.lan'] });
+    const acct = { name: 'Petty Cash', type: 'BANK' };
+    expect((await a.inject({ method: 'POST', url: '/api/accounts', payload: acct })).statusCode).toBe(403);
+    expect((await a.inject({ method: 'POST', url: '/api/accounts', headers: H, payload: acct })).statusCode).toBe(200);
+    for (const host of ['localhost:3001', '127.0.0.1:3001', '[::1]:3001', '192.168.1.20:3001', 'books.lan:3001', 'LOCALHOST']) {
+      expect((await a.inject({ url: '/api/accounts', headers: { host } })).statusCode, host).toBe(200);
+    }
+    // A page that rebound its own name to 127.0.0.1 (DNS rebinding) is refused, reads too.
+    for (const host of ['evil.example:3001', 'evil.example', '127.0.0.1.evil.example']) {
+      const r = await a.inject({ url: '/api/backup/download', headers: { host } });
+      expect(r.statusCode, host).toBe(403);
+      expect(r.json().error).toMatch(/does not answer to the name/);
+    }
+    expect((await a.inject({ method: 'DELETE', url: '/api/accounts/1', headers: { ...H, host: 'evil.example' } })).statusCode).toBe(403);
+    // The web app itself (not /api) still loads, so the message can be seen.
+    expect((await a.inject({ url: '/', headers: { host: 'evil.example' } })).statusCode).not.toBe(403);
+  });
+
+  it(`a burst of logins sent at once gets no more than ${FREE_ATTEMPTS} guesses`, () => {
+    const t = new LoginThrottle(now);
+    const let_through = Array.from({ length: 50 }, () => t.begin('10.0.0.5')).filter((w) => w === 0).length;
+    expect(let_through).toBe(FREE_ATTEMPTS);
+    for (let i = 0; i < FREE_ATTEMPTS; i++) t.failed('10.0.0.5');
+    expect(t.begin('10.0.0.5')).toBeGreaterThan(0);
+  });
+
+  it('forgets addresses that have been quiet for an hour', () => {
+    const t = new LoginThrottle(now);
+    for (let i = 0; i < 100; i++) {
+      t.begin(`10.0.${i}.1`);
+      t.failed(`10.0.${i}.1`);
+    }
+    expect(t.size).toBe(100);
+    clock += 3_600_001;
+    t.begin('10.9.9.9');
+    expect(t.size).toBe(1);
   });
 });
 

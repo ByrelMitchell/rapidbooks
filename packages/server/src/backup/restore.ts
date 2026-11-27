@@ -29,8 +29,8 @@ export function restoreBackup(backupFile: string, dbPath: string): RestoreResult
   const server = runningServer(dbPath);
   if (server)
     throw new Error(
-      `RapidBooks is running on this database (process ${server.pid}, ${server.url}). Stop it first:\n` +
-        `  sudo systemctl stop rapidbooks\n` +
+      `RapidBooks is running on this database (${server.url}, started ${server.started}). Stop it first:\n` +
+        `  sudo systemctl stop rapidbooks      (installed with Docker: sudo docker stop rapidbooks)\n` +
         `If you are sure it is not running, delete ${dbPath}.server.json and try again.`,
     );
 

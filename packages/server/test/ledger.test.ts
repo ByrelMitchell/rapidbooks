@@ -135,7 +135,7 @@ describe('http api', () => {
   it('round-trips a journal entry and reports errors as messages', async () => {
     const app = buildApp(db);
     const bad = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: { type: 'GENJRNL', date: '2026-02-30', splits: [] },
     });
@@ -143,7 +143,7 @@ describe('http api', () => {
     expect(bad.json().error).toMatch(/valid date/);
 
     const res = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: journal([[checking, 1234], [sales, -1234]]),
     });
@@ -152,7 +152,7 @@ describe('http api', () => {
     expect(reg.json()).toHaveLength(1);
     expect(reg.json()[0].balance).toBe(1234);
 
-    const put = await app.inject({ method: 'PUT', url: '/api/company', payload: { name: 'Acme Machine' } });
+    const put = await app.inject({ method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/company', payload: { name: 'Acme Machine' } });
     expect(put.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/company' })).json()).toEqual({ name: 'Acme Machine' });
   });

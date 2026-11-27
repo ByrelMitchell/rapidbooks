@@ -88,6 +88,7 @@ const trialBalance = () => (db.prepare('SELECT COALESCE(SUM(amount), 0) AS n FRO
 const txnSums = () =>
   db.prepare('SELECT txn_id, SUM(amount) AS n FROM splits GROUP BY txn_id HAVING n <> 0').all() as unknown[];
 const version = (id: number) => getTxn(db, id).version;
+const txnRow = (id: number) => db.prepare('SELECT id FROM txns WHERE id = ?').get(id);
 
 beforeEach(() => {
   db = openDb(':memory:');
@@ -398,6 +399,53 @@ describe('payments', () => {
     deleteTxn(db, id);
     expect(doc(inv).open_balance).toBe(10000);
     expect(db.prepare('SELECT COUNT(*) AS n FROM links').get()).toEqual({ n: 0 });
+  });
+
+  it('deleting a written-off invoice, or unapplying the write-off, deletes the 0.00 payment too', () => {
+    const inv = simpleInvoice(10000, { num: '1001' });
+    const w = payment(0, [{ txn_id: inv, amount: 0, discount: 10000, discount_account_id: discAcct }]).id;
+    deleteTxn(db, inv);
+    expect(txnRow(w)).toBeUndefined();
+    expect(trialBalance()).toBe(0);
+    expect(listNames(db).find((n) => n.id === acme)!.balance).toBe(0);
+
+    const inv2 = simpleInvoice(10000, { num: '1002' });
+    const w2 = payment(0, [{ txn_id: inv2, amount: 0, discount: 10000, discount_account_id: discAcct }]).id;
+    removeApplication(db, doc(w2).links_out[0].id);
+    expect(txnRow(w2)).toBeUndefined();
+    expect(doc(inv2).open_balance).toBe(10000);
+    expect(db.prepare('SELECT action FROM audit_log WHERE txn_id = ? ORDER BY id').all(w2).slice(-2)).toEqual([
+      { action: 'delete' },
+      { action: 'unapply' },
+    ]);
+    expect(txnSums()).toEqual([]);
+  });
+
+  it('takes a discount back out of a payment imported as posted, even folded into one A/R line', () => {
+    const inv = simpleInvoice(10000, { num: '1001' });
+    const inv2 = simpleInvoice(5000, { num: '1002' });
+    const { id } = payment(9800, [{ txn_id: inv, amount: 9800, discount: 200, discount_account_id: discAcct }]);
+    // As QuickBooks may post it: one A/R line for the payment and the discount.
+    db.prepare('DELETE FROM splits WHERE txn_id = ? AND seq >= 2').run(id);
+    db.prepare('UPDATE splits SET amount = -10000 WHERE txn_id = ? AND seq = 1').run(id);
+    db.prepare('INSERT INTO splits (txn_id, seq, account_id, amount, name_id, memo) VALUES (?, 2, ?, 200, ?, ?)').run(id, discAcct, acme, '');
+    db.prepare("UPDATE txns SET import_locked = 1, qb_type = 'Payment' WHERE id = ?").run(id);
+    expect(txnSums()).toEqual([]);
+
+    deleteTxn(db, inv);
+    expect(splitsOf(id)).toEqual([
+      [uf, 9800, acme],
+      [ar, -9800, acme],
+    ]);
+    expect(doc(id).unapplied).toBe(9800);
+    expect(trialBalance()).toBe(0);
+
+    // A discount it cannot find: refused with a plain message, nothing changed.
+    const { id: p2 } = payment(4900, [{ txn_id: inv2, amount: 4900, discount: 100, discount_account_id: discAcct }]);
+    db.prepare('UPDATE splits SET account_id = ? WHERE txn_id = ? AND seq = 2').run(sales, p2);
+    db.prepare("UPDATE txns SET import_locked = 1, qb_type = 'Payment' WHERE id = ?").run(p2);
+    expect(() => deleteTxn(db, inv2)).toThrow(/cannot find the discount in its lines.*Nothing was changed/);
+    expect(doc(inv2).open_balance).toBe(0);
   });
 });
 
@@ -905,7 +953,7 @@ describe('http api for sales', () => {
   it('round-trips invoices, payments and lookups', async () => {
     const app = buildApp(db);
     const post = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: { type: 'INVOICE', date: '2026-01-10', num: '1001', name_id: acme, terms_id: net30, lines: [{ item_id: mach, qty: 2, rate: 6500 }] },
     });
@@ -914,7 +962,7 @@ describe('http api for sales', () => {
     const got = (await app.inject({ method: 'GET', url: `/api/txns/${id}` })).json();
     expect(got).toMatchObject({ type: 'INVOICE', total: 13000, open_balance: 13000, due_date: '2026-02-09' });
     const put = await app.inject({
-      method: 'PUT',
+      method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' },
       url: `/api/txns/${id}`,
       payload: { type: 'INVOICE', date: '2026-01-10', num: '1001', name_id: acme, version: 1, lines: [{ item_id: grp, qty: 1 }] },
     });
@@ -926,7 +974,7 @@ describe('http api for sales', () => {
     expect((await app.inject({ method: 'GET', url: '/api/txns/find?type=INVOICE&num=1001' })).json()).toHaveLength(1);
 
     const pay = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/txns',
       payload: { type: 'PAYMENT', date: '2026-01-20', name_id: acme, amount: 15000, ref_no: '77', applications: [{ txn_id: id, amount: 13000 }] },
     });
@@ -939,11 +987,11 @@ describe('http api for sales', () => {
     expect(forEdit[0]).toMatchObject({ id, applied_by_payment: 13000 });
     expect((await app.inject({ method: 'GET', url: `/api/customers/${acme}/credits` })).json()[0]).toMatchObject({ id: pid, unapplied: 2000 });
     const inv2 = simpleInvoice(1500, { num: '1003' });
-    const apply = await app.inject({ method: 'POST', url: '/api/credits/apply', payload: { applications: [{ from_txn: pid, to_txn: inv2, amount: 1500 }] } });
+    const apply = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/credits/apply', payload: { applications: [{ from_txn: pid, to_txn: inv2, amount: 1500 }] } });
     expect(apply.statusCode).toBe(200);
     const link = doc(inv2).links_in[0];
-    expect((await app.inject({ method: 'DELETE', url: `/api/links/${link.id}` })).statusCode).toBe(200);
-    const over = await app.inject({ method: 'POST', url: '/api/credits/apply', payload: { applications: [{ from_txn: pid, to_txn: inv2, amount: 2500 }] } });
+    expect((await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/links/${link.id}` })).statusCode).toBe(200);
+    const over = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/credits/apply', payload: { applications: [{ from_txn: pid, to_txn: inv2, amount: 2500 }] } });
     expect(over.statusCode).toBe(400);
     expect(over.json().error).toMatch(/Only \$20.00 of that payment is left/);
 
@@ -952,9 +1000,9 @@ describe('http api for sales', () => {
     expect((await app.inject({ method: 'GET', url: '/api/invoices/to-email' })).json()).toEqual([]);
     const pending = (await app.inject({ method: 'GET', url: '/api/deposits/pending' })).json();
     expect(pending.map((p: { id: number }) => p.id)).toEqual([pid]);
-    const dep = await app.inject({ method: 'POST', url: '/api/txns', payload: { type: 'DEPOSIT', date: '2026-01-21', account_id: checking, payment_ids: [pid] } });
+    const dep = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/txns', payload: { type: 'DEPOSIT', date: '2026-01-21', account_id: checking, payment_ids: [pid] } });
     expect(dep.statusCode).toBe(200);
-    const del = await app.inject({ method: 'DELETE', url: `/api/txns/${pid}` });
+    const del = await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/txns/${pid}` });
     expect(del.statusCode).toBe(400);
     expect(del.json().error).toMatch(/Remove it from the deposit first/);
     expect((await app.inject({ method: 'GET', url: `/api/deposits/pending?deposit_id=${dep.json().id}` })).json()[0]).toMatchObject({ in_this_deposit: true });
@@ -963,7 +1011,7 @@ describe('http api for sales', () => {
   it('round-trips finance charges and statements', async () => {
     const app = buildApp(db);
     const put = await app.inject({
-      method: 'PUT',
+      method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/finance-charges/settings',
       payload: { annual_rate_bp: 1800, min_charge: 100, grace_days: 0, account_id: fcIncome },
     });
@@ -975,7 +1023,7 @@ describe('http api for sales', () => {
     const prev = (await app.inject({ method: 'GET', url: '/api/finance-charges/preview?as_of=2026-03-02' })).json();
     expect(prev).toHaveLength(1);
     expect(prev[0]).toMatchObject({ name_id: acme, charge: 1479 }); // 100000 × 18% × 30/365 = 1479.45
-    const assess = await app.inject({ method: 'POST', url: '/api/finance-charges/assess', payload: { as_of: '2026-03-02', customer_ids: [acme] } });
+    const assess = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/finance-charges/assess', payload: { as_of: '2026-03-02', customer_ids: [acme] } });
     expect(assess.json().ids).toHaveLength(1);
 
     const st = (await app.inject({ method: 'GET', url: `/api/statements?customer_id=${acme}&from=2026-03-01&to=2026-03-31` })).json();
@@ -986,7 +1034,14 @@ describe('http api for sales', () => {
     expect(pdf.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
     const ipdf = await app.inject({ method: 'GET', url: `/api/txns/${assess.json().ids[0]}/pdf` });
     expect(ipdf.headers['content-type']).toBe('application/pdf');
-    expect(ipdf.headers['content-disposition']).toBe('inline; filename="Invoice FC 1.pdf"');
+    expect(ipdf.headers['content-disposition']).toBe(`inline; filename="Invoice FC 1.pdf"; filename*=UTF-8''Invoice%20FC%201.pdf`);
+    // A name with characters outside Latin-1 (curly apostrophe, em dash) still makes a PDF.
+    db.prepare('UPDATE names SET name = ? WHERE id = ?').run('O’Brien’s Garage — East', acme);
+    const curly = await app.inject({ method: 'GET', url: `/api/statements/pdf?customer_id=${acme}&from=2026-03-01&to=2026-03-31` });
+    expect(curly.statusCode).toBe(200);
+    expect(curly.headers['content-disposition']).toBe(
+      `inline; filename="Statement O'Brien's Garage - East.pdf"; filename*=UTF-8''Statement%20O%E2%80%99Brien%E2%80%99s%20Garage%20%E2%80%94%20East.pdf`,
+    );
     expect((await app.inject({ method: 'GET', url: '/api/statements?customer_id=1&from=2026-03-01&to=bad' })).statusCode).toBe(400);
   });
 
@@ -996,14 +1051,14 @@ describe('http api for sales', () => {
     const id = invoice([L(mach, 1, 6500)], { num: '55', to_email: true }).id;
     const d = (await app.inject({ method: 'GET', url: `/api/email/defaults/${id}` })).json();
     expect(d).toMatchObject({ to: 'ap@acme.example', subject: 'Invoice 55 from ', attachment_name: 'Invoice 55.pdf' });
-    const send = await app.inject({ method: 'POST', url: '/api/email/send', payload: { txn_id: id, to: d.to, subject: d.subject, body: d.body } });
+    const send = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/email/send', payload: { txn_id: id, to: d.to, subject: d.subject, body: d.body } });
     expect(send.statusCode).toBe(200);
     expect(send.json().ok).toBe(true);
-    const batch = await app.inject({ method: 'POST', url: '/api/email/batch', payload: { txn_ids: [id] } });
+    const batch = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/email/batch', payload: { txn_ids: [id] } });
     expect(batch.json()).toEqual([{ txn_id: id, num: '55', ok: true, error: null }]);
     const tpl = (await app.inject({ method: 'GET', url: '/api/email/templates' })).json();
     expect(tpl.invoice_subject).toBe('Invoice {num} from {company}');
-    await app.inject({ method: 'PUT', url: '/api/email/templates', payload: { ...tpl, invoice_subject: 'Inv {num} - {customer}' } });
+    await app.inject({ method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/email/templates', payload: { ...tpl, invoice_subject: 'Inv {num} - {customer}' } });
     expect((await app.inject({ method: 'GET', url: `/api/email/defaults/${id}` })).json().subject).toBe('Inv 55 - Acme');
     expect((await app.inject({ method: 'GET', url: '/api/email/status' })).statusCode).toBe(200);
   });

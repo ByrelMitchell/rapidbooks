@@ -1,5 +1,6 @@
 import {
   addDays,
+  addToNum,
   percentOf,
   todayIso,
   type AssignCheckNumbersInput,
@@ -164,11 +165,10 @@ export function payBills(db: DB, input: PayBillsInput): PayBillsResult {
     const ordered = [...groups.values()].sort((a, b) => byName(fullName(db, a.vendor), fullName(db, b.vendor)) || a.ap - b.ap);
 
     const numbered = input.method === 'check' && !input.to_print;
-    let num = 0;
+    let num = '';
     if (numbered) {
-      const first = input.first_check_num.trim() || nextNum(db, 'CHECK', input.account_id);
-      if (!/^\d+$/.test(first)) throw new AppError(400, 'The first check number must be a number.');
-      num = Number(first);
+      num = input.first_check_num.trim() || nextNum(db, 'CHECK', input.account_id);
+      if (!/^\d+$/.test(num)) throw new AppError(400, 'The first check number must be a number.');
     }
 
     const result: PayBillsResult = { payments: [] };
@@ -176,7 +176,11 @@ export function payBills(db: DB, input: PayBillsInput): PayBillsResult {
       const amount = g.apps.reduce((t, a) => t + a.amount, 0);
       const vendor = nameRow(db, g.vendor)!;
       // A payment of only a discount writes no check, so it takes no number.
-      const checkNum = numbered && amount > 0 ? String(num++) : '';
+      let checkNum = '';
+      if (numbered && amount > 0) {
+        checkNum = num;
+        num = addToNum(num, 1);
+      }
       const { id } = saveTxn(db, {
         type: 'BILLPMT',
         date: input.date,
@@ -229,7 +233,7 @@ export function listChecksToPrint(db: DB, accountId: number | null = null): Chec
  */
 export function assignCheckNumbers(db: DB, input: AssignCheckNumbersInput): { id: number; num: string }[] {
   return db.transaction(() => {
-    let n = Number(input.first_num);
+    let n = input.first_num;
     const out: { id: number; num: string }[] = [];
     const seen = new Set<number>();
     for (const id of input.txn_ids) {
@@ -239,7 +243,8 @@ export function assignCheckNumbers(db: DB, input: AssignCheckNumbersInput): { id
       if (!t) throw new AppError(400, 'One of those checks no longer exists.');
       if (!CHECK_TYPES.includes(t.type)) throw new AppError(400, 'Only checks, bill payments and paychecks can be given check numbers.');
       if (t.type === 'BILLPMT' && t.pay_method === 'other') throw new AppError(400, 'That bill payment was not paid by check.');
-      const num = String(n++);
+      const num = n;
+      n = addToNum(n, 1);
       db.prepare("UPDATE txns SET num = ?, to_print = 0, version = version + 1, updated_at = datetime('now') WHERE id = ?").run(num, id);
       db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('number', id, JSON.stringify({ num }));
       out.push({ id, num });

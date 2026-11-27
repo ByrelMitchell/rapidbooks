@@ -1,5 +1,6 @@
 import {
   dueDate,
+  formatUsDate,
   lineAmount,
   percentOf,
   type AnyTxn,
@@ -355,8 +356,10 @@ function buildSalesDoc(db: DB, input: InvoiceInput | CreditMemoInput, old: Old):
 
 function buildPayment(db: DB, input: PaymentInput, old: Old): Built {
   const cust = requireCustomer(db, input.name_id);
-  // A payment of 0.00 is allowed when it only takes discounts (QuickBooks' way to write off an invoice).
-  if (input.amount < 0 || (input.amount === 0 && !input.applications.some((a) => a.discount > 0))) {
+  // A payment of 0.00 is allowed when it only takes discounts (QuickBooks' way to write off an invoice),
+  // and is kept as it is once deposited, even after its invoice is gone (see repostPayment).
+  const writeOff = input.applications.some((a) => a.discount > 0) || (old !== undefined && depositOf(db, old.id) !== null);
+  if (input.amount < 0 || (input.amount === 0 && !writeOff)) {
     throw new AppError(400, 'Enter the amount of the payment.');
   }
   const depositTo = input.account_id ?? systemAccount(db, 'UNDEPOSITED');
@@ -652,13 +655,29 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
   })();
 }
 
-/** Rebuild a payment's splits from what is stored (after one of its applications went away). */
-function repostPayment(db: DB, id: number) {
+/** A discount that an apply link took, and that goes away with the link. */
+interface DroppedDiscount {
+  discount: number;
+  discount_account_id: number | null;
+}
+
+/**
+ * Rebuild a payment's splits after some of its applications went away (`dropped`: the
+ * discounts those took). A 0.00 write-off left with nothing to write off goes too.
+ */
+function repostPayment(db: DB, id: number, dropped: DroppedDiscount[]) {
   const p = txnRow(db, id)!;
-  if (p.type === 'BILLPMT') return repostBillPayment(db, id);
   const apps = db
     .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
     .all(id) as PaymentInput['applications'];
+  if (p.type === 'PAYMENT' && p.total === 0 && apps.length === 0 && depositOf(db, id) === null) {
+    const before = getTxn(db, id);
+    db.prepare('DELETE FROM txns WHERE id = ?').run(id);
+    db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('delete', id, JSON.stringify(before));
+    return;
+  }
+  if (p.import_locked) return dropLockedDiscounts(db, p, dropped);
+  if (p.type === 'BILLPMT') return repostBillPayment(db, p, apps);
   const input: PaymentInput = {
     type: 'PAYMENT',
     date: p.date,
@@ -675,12 +694,7 @@ function repostPayment(db: DB, id: number) {
   saveTxn(db, input, id, { repost: true });
 }
 
-/** Rebuild a bill payment's splits from what is stored (after one of its applications went away). */
-function repostBillPayment(db: DB, id: number) {
-  const p = txnRow(db, id)!;
-  const apps = db
-    .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
-    .all(id) as BillPaymentInput['applications'];
+function repostBillPayment(db: DB, p: TxnHeaderRow, apps: BillPaymentInput['applications']) {
   const input: BillPaymentInput = {
     type: 'BILLPMT',
     date: p.date,
@@ -695,7 +709,49 @@ function repostBillPayment(db: DB, id: number) {
     amount: p.total,
     applications: apps,
   };
-  saveTxn(db, input, id, { repost: true });
+  saveTxn(db, input, p.id, { repost: true });
+}
+
+/**
+ * A payment imported exactly as QuickBooks posted it cannot be rebuilt from its form, so
+ * each dropped discount is taken back out of its splits directly: the discount account
+ * line and the A/R (A/P) line each shrink by the discount, and go when they reach zero.
+ * QuickBooks may have folded the discount into a larger A/R or A/P line, so a line that
+ * is larger than the discount is reduced rather than removed.
+ */
+function dropLockedDiscounts(db: DB, p: TxnHeaderRow, dropped: DroppedDiscount[]) {
+  type S = { seq: number; account_id: number; amount: number; name_id: number | null; memo: string; cleared: number };
+  const splits = db
+    .prepare('SELECT seq, account_id, amount, name_id, memo, cleared FROM splits WHERE txn_id = ? ORDER BY seq')
+    .all(p.id) as S[];
+  // Payment: Dr discount, Cr A/R. Bill payment: Dr A/P, Cr discount.
+  const sign = p.type === 'BILLPMT' ? -1 : 1;
+  const key = p.type === 'BILLPMT' ? p.ap_account_id : p.ar_account_id;
+  const take = (account: number | null, amount: number): boolean => {
+    const fits = splits.filter((s) => s.account_id === account && Math.sign(s.amount) === Math.sign(amount) && Math.abs(s.amount) >= Math.abs(amount));
+    const s = fits.find((x) => x.amount === amount) ?? fits[0];
+    if (!s) return false;
+    s.amount -= amount;
+    s.cleared = 0;
+    return true;
+  };
+  for (const d of dropped) {
+    if (d.discount === 0) continue;
+    if (!take(d.discount_account_id, sign * d.discount) || !take(key, -sign * d.discount)) {
+      const what = p.qb_type || TXN_TYPE_LABELS_LOWER[p.type] || p.type;
+      throw new AppError(
+        400,
+        `The ${what.toLowerCase()}${p.num ? ` ${p.num}` : ''} of ${formatUsDate(p.date)} took a discount here. It was imported from QuickBooks exactly as QuickBooks posted it, and RapidBooks cannot find the discount in its lines to take it back out. Nothing was changed. To go ahead, delete that ${what.toLowerCase()} first and enter it again.`,
+      );
+    }
+  }
+  const kept = splits.filter((s) => s.amount !== 0);
+  validate(db, kept, 2);
+  db.prepare('DELETE FROM splits WHERE txn_id = ?').run(p.id);
+  const ins = db.prepare('INSERT INTO splits (txn_id, seq, account_id, amount, name_id, memo, cleared) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  kept.forEach((s, seq) => ins.run(p.id, seq, s.account_id, s.amount, s.name_id, s.memo, s.cleared));
+  db.prepare("UPDATE txns SET version = version + 1, updated_at = datetime('now') WHERE id = ?").run(p.id);
+  db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('repost', p.id, JSON.stringify({ dropped }));
 }
 
 const LINE_COLS =
@@ -790,19 +846,20 @@ export function deleteTxn(db: DB, id: number) {
       throw new AppError(400, 'This payment has been deposited. Remove it from the deposit first, then delete it.');
     }
     // Payments that took a discount on this invoice or bill must drop the discount posting.
-    const repost =
-      before.type === 'INVOICE' || before.type === 'BILL'
-        ? (db
-            .prepare("SELECT DISTINCT from_txn FROM links WHERE kind = 'apply' AND to_txn = ? AND discount <> 0")
-            .all(id) as { from_txn: number }[]).map((r) => r.from_txn)
-        : [];
+    const repost = new Map<number, DroppedDiscount[]>();
+    if (before.type === 'INVOICE' || before.type === 'BILL') {
+      const rows = db
+        .prepare("SELECT from_txn, discount, discount_account_id FROM links WHERE kind = 'apply' AND to_txn = ? AND discount <> 0")
+        .all(id) as (DroppedDiscount & { from_txn: number })[];
+      for (const r of rows) repost.set(r.from_txn, [...(repost.get(r.from_txn) ?? []), r]);
+    }
     // Purchase orders received on this bill reopen.
     const pos =
       before.type === 'BILL'
         ? (db.prepare("SELECT to_txn FROM links WHERE kind = 'po' AND from_txn = ?").all(id) as { to_txn: number }[]).map((r) => r.to_txn)
         : [];
     db.prepare('DELETE FROM txns WHERE id = ?').run(id); // splits, lines and links go with it
-    for (const p of repost) repostPayment(db, p);
+    for (const [p, dropped] of repost) repostPayment(db, p, dropped);
     reopenPurchaseOrders(db, pos);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       'delete',
@@ -819,13 +876,13 @@ export function deleteTxn(db: DB, id: number) {
 export function removeApplication(db: DB, linkId: number) {
   db.transaction(() => {
     const l = db.prepare('SELECT * FROM links WHERE id = ?').get(linkId) as
-      | { id: number; from_txn: number; kind: string; discount: number }
+      | { id: number; from_txn: number; kind: string; discount: number; discount_account_id: number | null }
       | undefined;
     if (!l) throw new AppError(404, 'That application no longer exists.');
     if (l.kind === 'deposit') throw new AppError(400, 'To take a payment out of a deposit, edit the deposit.');
     if (l.kind === 'po') throw new AppError(400, 'To unlink a purchase order from a bill, edit the bill.');
     db.prepare('DELETE FROM links WHERE id = ?').run(linkId);
-    if (l.discount !== 0) repostPayment(db, l.from_txn);
+    if (l.discount !== 0) repostPayment(db, l.from_txn, [l]);
     else db.prepare('UPDATE txns SET version = version + 1 WHERE id = ?').run(l.from_txn);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       'unapply',

@@ -253,16 +253,16 @@ describe('items', () => {
 describe('http api for lists', () => {
   it('round-trips names', async () => {
     const app = buildApp(db);
-    const post = await app.inject({ method: 'POST', url: '/api/names', payload: { kind: 'customer', name: 'Acme' } });
+    const post = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/names', payload: { kind: 'customer', name: 'Acme' } });
     expect(post.statusCode).toBe(200);
     const { id } = post.json();
-    const job = await app.inject({ method: 'POST', url: '/api/names', payload: { kind: 'customer', name: 'Job', parent_id: id } });
+    const job = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/names', payload: { kind: 'customer', name: 'Job', parent_id: id } });
     expect(job.statusCode).toBe(200);
-    const dup = await app.inject({ method: 'POST', url: '/api/names', payload: { kind: 'vendor', name: 'acme' } });
+    const dup = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/names', payload: { kind: 'vendor', name: 'acme' } });
     expect(dup.statusCode).toBe(400);
     expect(dup.json().error).toMatch(/already in use/);
 
-    const put = await app.inject({ method: 'PUT', url: `/api/names/${id}`, payload: { kind: 'customer', name: 'Acme Fab', picks_up: true } });
+    const put = await app.inject({ method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/names/${id}`, payload: { kind: 'customer', name: 'Acme Fab', picks_up: true } });
     expect(put.statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/names/${id}` })).json()).toMatchObject({ name: 'Acme Fab', picks_up: true });
     const list = (await app.inject({ method: 'GET', url: '/api/names?kind=customer' })).json();
@@ -270,7 +270,7 @@ describe('http api for lists', () => {
     expect((await app.inject({ method: 'GET', url: '/api/names?kind=vendor' })).json()).toEqual([]);
     expect((await app.inject({ method: 'GET', url: '/api/names?kind=bogus' })).statusCode).toBe(400);
 
-    const del = await app.inject({ method: 'DELETE', url: `/api/names/${id}` });
+    const del = await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/names/${id}` });
     expect(del.statusCode).toBe(400);
     expect(del.json().error).toMatch(/has jobs/);
     expect((await app.inject({ method: 'GET', url: '/api/names/9999' })).statusCode).toBe(404);
@@ -278,28 +278,28 @@ describe('http api for lists', () => {
 
   it('round-trips terms', async () => {
     const app = buildApp(db);
-    const post = await app.inject({ method: 'POST', url: '/api/terms', payload: { name: 'Net 30', net_days: 30 } });
+    const post = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/terms', payload: { name: 'Net 30', net_days: 30 } });
     const { id } = post.json();
-    await app.inject({ method: 'PUT', url: `/api/terms/${id}`, payload: { name: 'Net 30', net_days: 30, inactive: true } });
+    await app.inject({ method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/terms/${id}`, payload: { name: 'Net 30', net_days: 30, inactive: true } });
     expect((await app.inject({ method: 'GET', url: `/api/terms/${id}` })).json()).toMatchObject({ inactive: true });
     expect((await app.inject({ method: 'GET', url: '/api/terms' })).json()).toHaveLength(1);
-    expect((await app.inject({ method: 'DELETE', url: `/api/terms/${id}` })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/terms/${id}` })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/terms' })).json()).toEqual([]);
   });
 
   it('round-trips items', async () => {
     const app = buildApp(db);
-    const bad = await app.inject({ method: 'POST', url: '/api/items', payload: { name: 'Machining', type: 'SERVICE' } });
+    const bad = await app.inject({ method: 'POST', headers: { 'x-requested-with': 'RapidBooks' }, url: '/api/items', payload: { name: 'Machining', type: 'SERVICE' } });
     expect(bad.statusCode).toBe(400);
     expect(bad.json().error).toMatch(/Choose the account/);
     const post = await app.inject({
-      method: 'POST',
+      method: 'POST', headers: { 'x-requested-with': 'RapidBooks' },
       url: '/api/items',
       payload: { name: 'Machining', type: 'SERVICE', account_id: sales, rate: 6500 },
     });
     const { id } = post.json();
     await app.inject({
-      method: 'PUT',
+      method: 'PUT', headers: { 'x-requested-with': 'RapidBooks' },
       url: `/api/items/${id}`,
       payload: { name: 'Machining', type: 'SERVICE', account_id: sales, rate: 7000, description: 'Per hour' },
     });
@@ -310,6 +310,6 @@ describe('http api for lists', () => {
       full_name: 'Machining',
     });
     expect((await app.inject({ method: 'GET', url: '/api/items' })).json()).toHaveLength(1);
-    expect((await app.inject({ method: 'DELETE', url: `/api/items/${id}` })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', headers: { 'x-requested-with': 'RapidBooks' }, url: `/api/items/${id}` })).statusCode).toBe(200);
   });
 });
