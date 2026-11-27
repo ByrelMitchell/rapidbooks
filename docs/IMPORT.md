@@ -118,6 +118,20 @@ Copy the `qb-export` folder into the RapidBooks folder (the one that contains
 
 ## 3. Run the import
 
+**The short way:** put the export files in `data/qb-exports` and run
+
+```
+./deploy/import-history.sh
+```
+
+It finds the files by name (`lists.iif`, `journal01.csv`..., `tb.csv`,
+`open-invoices.csv`, `unpaid-bills.csv`, `pl*.csv`), reads the date from the Trial
+Balance, builds `data/trial.db` and saves the reconciliation as
+`data/trial-reconciliation.txt`. Another export folder or company file:
+`./deploy/import-history.sh path/to/qb-export data/other.db`. On a computer where
+RapidBooks runs in Docker it runs the import in the Docker image (use `sudo` if Docker
+needs it). The rest of this section is what it does, by hand.
+
 Open a terminal in the RapidBooks folder and type (one line; `\` continues a line):
 
 ```
