@@ -107,7 +107,8 @@ export function LeftIconBar() {
       </div>
       {!open && (
         <button type="button" className="lbar-label" tabIndex={-1} onClick={() => setViewPref('leftBarOpen', true)}>
-          My Shortcuts
+          {/* Turned on the inner span: older browsers ignore writing-mode on a button itself. */}
+          <span className="lbar-label-text">My Shortcuts</span>
         </button>
       )}
       <div className="lbar-items">
