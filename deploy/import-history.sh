@@ -79,17 +79,29 @@ OUT_DIR="$(cd "$(dirname "$OUT")" && pwd)"
 OUT_NAME="$(basename "$OUT")"
 REPORT_NAME="${OUT_NAME%.db}-reconciliation.txt"
 
-# Files of the export folder whose lower-case name matches a pattern, sorted.
+# Files of the export folder whose name, in lower case, matches a pattern (also in lower
+# case), sorted. Compared name by name: a glob without wildcards ("lists.iif") is never
+# matched against the folder, so nocaseglob would not help, and Linux names are
+# case-sensitive (QuickBooks writes lists.IIF, tb.CSV).
 find_files() {
-  local pattern="$1" f
-  shopt -s nullglob nocaseglob
-  for f in "$EXPORTS"/$pattern; do [ -f "$f" ] && basename "$f"; done | LC_ALL=C sort
-  shopt -u nullglob nocaseglob
+  local pattern="$1" f name
+  for f in "$EXPORTS"/*; do
+    [ -f "$f" ] || continue
+    name="${f##*/}"
+    # shellcheck disable=SC2053 # $pattern is a glob on purpose
+    if [[ "${name,,}" == $pattern ]]; then printf '%s\n' "$name"; fi
+  done | LC_ALL=C sort
+  return 0
 }
 one_file() { find_files "$1" | head -n 1; }
 
-IIF="$(one_file 'lists.iif')"
-[ -n "$IIF" ] || die "No lists.iif in $EXPORTS."
+# The lists: lists.iif (any case; lists.iff too), else the folder's only .iif file.
+IIF="$(one_file 'lists.iif')"; [ -n "$IIF" ] || IIF="$(one_file 'lists.iff')"
+if [ -z "$IIF" ]; then
+  mapfile -t IIFS < <(find_files '*.iif')
+  [ "${#IIFS[@]}" -eq 1 ] && IIF="${IIFS[0]}"
+fi
+[ -n "$IIF" ] || die "No lists.iif in $EXPORTS (the list export, any letter case)."
 mapfile -t JOURNALS < <(find_files 'journal[0-9]*.csv'; find_files 'journal[0-9]*.txt')
 [ "${#JOURNALS[@]}" -gt 0 ] || mapfile -t JOURNALS < <(find_files 'journal.csv'; find_files 'journal.txt')
 [ "${#JOURNALS[@]}" -gt 0 ] || die "No journal*.csv in $EXPORTS."
