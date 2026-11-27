@@ -449,6 +449,74 @@ describe('payments', () => {
   });
 });
 
+describe('a second A/R account', () => {
+  it("lists and pays only the invoices in the payment's A/R account", async () => {
+    const ar2 = acct('A/R Imported', 'AR');
+    const inv1 = simpleInvoice(10000, { num: '1001' });
+    const inv2 = simpleInvoice(20000, { num: '1002', ar_account_id: ar2 });
+    expect(listOpenInvoices(db, acme, null, ar).map((i) => i.num)).toEqual(['1001']);
+    expect(listOpenInvoices(db, acme, null, ar2).map((i) => i.num)).toEqual(['1002']);
+
+    const p = payment(20000, [{ txn_id: inv2, amount: 20000 }], { ar_account_id: ar2 }).id;
+    expect(doc(p).ar_account_id).toBe(ar2);
+    expect(doc(inv2).open_balance).toBe(0);
+
+    const app = buildApp(db);
+    const get = async (q: string) => (await app.inject({ url: `/api/customers/${acme}/open-invoices${q}` })).json().map((i: { num: string }) => i.num);
+    expect(await get('')).toEqual(['1001']); // a new payment: the default A/R account
+    expect(await get(`?payment_id=${p}`)).toEqual(['1002']); // editing: the payment's own
+    expect(await get(`?ar_account_id=${ar2}&payment_id=${p}`)).toEqual(['1002']);
+    expect(await get(`?ar_account_id=${ar}`)).toEqual(['1001']);
+    expect(doc(inv1).open_balance).toBe(10000);
+  });
+});
+
+describe('journal edits of transactions imported as posted', () => {
+  const lock = (id: number, qb: string) => db.prepare('UPDATE txns SET import_locked = 1, qb_type = ? WHERE id = ?').run(qb, id);
+  const journal = (id: number, change: (s: { account_id: number; amount: number; name_id: number | null; memo: string }[]) => void, extra: Record<string, unknown> = {}) => {
+    const t = getTxn(db, id);
+    const splits = t.splits.map((x) => ({ account_id: x.account_id, amount: x.amount, name_id: x.name_id, memo: x.memo }));
+    change(splits);
+    return saveTxn(db, TxnInput.parse({ type: 'GENJRNL', date: t.date, num: t.num, name_id: t.name_id, memo: t.memo, version: t.version, splits, ...extra }), id);
+  };
+
+  it('keep a deposited payment, a deposit and applications true', () => {
+    const inv = simpleInvoice(50000, { num: '1001' });
+    const p = payment(50000, [{ txn_id: inv, amount: 30000 }]).id;
+    const d = deposit([p]).id;
+    lock(p, 'Payment');
+    lock(d, 'Deposit');
+    lock(inv, 'Invoice');
+
+    // A deposited payment's amount and customer stay as they are.
+    expect(() => journal(p, (s) => { s[0].amount = 45000; s[1].amount = -45000; })).toThrow(/has been deposited, so its amount, customer/);
+    expect(() => journal(p, (s) => s.forEach((x) => (x.name_id = zeta)), { name_id: zeta })).toThrow(/has been deposited/);
+    // Its memo and other lines can still change.
+    journal(p, () => {}, { memo: 'Check 552' });
+    expect(doc(p).memo).toBe('Check 552');
+
+    // The deposit keeps what it takes out of Undeposited Funds.
+    expect(() => journal(d, (s) => { s[0].amount = 45000; s[1].amount = -45000; })).toThrow(/Undeposited Funds lines must still total \$500.00/);
+
+    // An invoice cannot drop below what is applied to it.
+    expect(() => journal(inv, (s) => { s[0].amount = 20000; s[1].amount = -20000; })).toThrow(
+      /Payments and credits of \$300.00 have been applied to this invoice/,
+    );
+    journal(inv, (s) => { s[0].amount = 30000; s[1].amount = -30000; });
+    expect(doc(inv).open_balance).toBe(0);
+    expect(() => journal(inv, (s) => s.forEach((x) => (x.name_id = zeta)), { name_id: zeta })).toThrow(/its name cannot be changed/);
+
+    // A credit memo cannot drop below what of it is applied.
+    const inv2 = simpleInvoice(10000, { num: '1002' });
+    const cm = creditMemo([L(mach, null, null, { amount: 8000 })], { num: '1003' }).id;
+    applyCredits(db, { applications: [{ from_txn: cm, to_txn: inv2, amount: 6000 }] });
+    lock(cm, 'Credit Memo');
+    expect(() => journal(cm, (s) => { s[0].amount = -5000; s[1].amount = 5000; })).toThrow(/\$60.00 of this credit memo has been applied/);
+    expect(trialBalance()).toBe(0);
+    expect(txnSums()).toEqual([]);
+  });
+});
+
 describe('applying credits', () => {
   it('applies credit memos and payment remainders to invoices without posting', () => {
     const inv = simpleInvoice(10000, { num: '1001' });
@@ -917,6 +985,9 @@ describe('e-mail', () => {
     expect(doc(id).to_email).toBe(false);
     expect(doc(id).emailed_at).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
     expect(listToEmail(db)).toEqual([]);
+    // A window still holding the old version cannot put it back in the queue unseen.
+    expect(() => invoice([L(mach, 1, 6500)], { num: '1234', to_email: true, version: 1 }, id)).toThrow(/changed in another window/);
+    expect(version(id)).toBe(2);
   });
 
   it('sends a batch and reports each result', async () => {

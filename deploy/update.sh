@@ -21,6 +21,16 @@ die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 say "Stopping RapidBooks"
 systemctl stop rapidbooks.service
 
+# From here on RapidBooks is stopped. If a step fails (npm ci with no network, the build),
+# say so plainly instead of ending on npm's own error.
+failed() {
+  echo >&2
+  echo "ERROR: the update failed (see the message above). RapidBooks is STOPPED and may be half-updated." >&2
+  echo "Fix the problem and run this update again; running it again is safe." >&2
+  echo "To try starting it as it is: sudo systemctl start rapidbooks" >&2
+}
+trap failed ERR
+
 say "Backing up before the update"
 if ! /usr/local/bin/rapidbooks-admin backup; then
   echo "The backup failed. RapidBooks has been left stopped and NOT updated." >&2

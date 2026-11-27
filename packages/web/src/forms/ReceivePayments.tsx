@@ -42,6 +42,8 @@ interface Form {
   refNo: string;
   memo: string;
   depositTo: number | null;
+  /** The payment's Accounts Receivable account; null is the default one. */
+  arAccountId: number | null;
   rows: Row[];
 }
 
@@ -59,6 +61,7 @@ const newForm = (customerId: number | null, depositTo: number | null): Form => (
   refNo: '',
   memo: '',
   depositTo,
+  arAccountId: null,
   rows: [],
 });
 
@@ -93,6 +96,8 @@ export function ReceivePayments({ winId, props }: WinProps) {
   const { data: accounts } = useData<Account[]>('/api/accounts');
   const { data: customers } = useData<Name[]>('/api/names?kind=customer');
   const ufId = accounts?.find((a) => a.system_role === 'UNDEPOSITED')?.id ?? null;
+  const arAccounts = useMemo(() => (accounts ?? []).filter((a) => a.type === 'AR'), [accounts]);
+  const defaultArId = arAccounts.find((a) => a.system_role === 'AR')?.id ?? null;
   const [form, setForm, formRef] = useLiveState<Form>(() => newForm(propCustomer, null));
   const [txnId, setTxnId, txnIdRef] = useLiveState<number | null>(propId);
   const [depositId, setDepositId] = useState<number | null>(null);
@@ -119,8 +124,8 @@ export function ReceivePayments({ winId, props }: WinProps) {
     if (clean) markClean();
   }, [ufId]);
 
-  /** Load the customer's open invoices (for a new customer choice: nothing applied, then auto-apply). */
-  const loadRows = async (customerId: number | null) => {
+  /** Load the customer's open invoices (for a new customer or A/R account choice: nothing applied, then auto-apply). */
+  const loadRows = async (customerId: number | null, arAccountId: number | null = formRef.current.arAccountId) => {
     const seq = ++rowsSeq.current;
     if (customerId === null) {
       setForm((f) => ({ ...f, rows: [] }));
@@ -128,11 +133,14 @@ export function ReceivePayments({ winId, props }: WinProps) {
     }
     try {
       const pid = txnIdRef.current;
-      const list = await api.get<OpenInvoice[]>(
-        `/api/customers/${customerId}/open-invoices${pid !== null ? `?payment_id=${pid}` : ''}`,
-      );
+      const q = new URLSearchParams();
+      if (pid !== null) q.set('payment_id', String(pid));
+      if (arAccountId !== null) q.set('ar_account_id', String(arAccountId));
+      const list = await api.get<OpenInvoice[]>(`/api/customers/${customerId}/open-invoices?${q}`);
       if (seq !== rowsSeq.current) return;
-      setForm((f) => (f.customerId !== customerId ? f : { ...f, rows: autoApply(toRows(list, false, new Map()), f.amount ?? 0) }));
+      setForm((f) =>
+        f.customerId !== customerId || f.arAccountId !== arAccountId ? f : { ...f, rows: autoApply(toRows(list, false, new Map()), f.amount ?? 0) },
+      );
     } catch (e) {
       if (seq === rowsSeq.current) setError(errorMessage(e));
     }
@@ -164,7 +172,9 @@ export function ReceivePayments({ winId, props }: WinProps) {
       const t = await api.get<DocTxn>(`/api/txns/${id}`);
       if (handOffLocked(desk, winId, t)) return;
       if (t.type !== 'PAYMENT') throw new Error('That transaction is not a payment.');
-      const list = await api.get<OpenInvoice[]>(`/api/customers/${t.name_id}/open-invoices?payment_id=${id}`);
+      const list = await api.get<OpenInvoice[]>(
+        `/api/customers/${t.name_id}/open-invoices?payment_id=${id}${t.ar_account_id !== null ? `&ar_account_id=${t.ar_account_id}` : ''}`,
+      );
       const accts = new Map(t.links_out.filter((l) => l.kind === 'apply').map((l) => [l.txn_id, l.discount_account_id]));
       const f: Form = {
         customerId: t.name_id,
@@ -174,6 +184,7 @@ export function ReceivePayments({ winId, props }: WinProps) {
         refNo: t.ref_no,
         memo: t.memo,
         depositTo: t.account_id,
+        arAccountId: t.ar_account_id,
         rows: toRows(list, true, accts),
       };
       setForm(f);
@@ -217,6 +228,10 @@ export function ReceivePayments({ winId, props }: WinProps) {
         .map((a) => ({ id: a.id, label: a.full_name })),
     [accounts, form.depositTo],
   );
+  const arOptions = useMemo(
+    () => arAccounts.filter((a) => !a.inactive || a.id === form.arAccountId).map((a) => ({ id: a.id, label: a.full_name })),
+    [arAccounts, form.arAccountId],
+  );
   const customer = customers?.find((c) => c.id === form.customerId) ?? null;
 
   const edit = (change: (f: Form) => Form) => {
@@ -229,6 +244,14 @@ export function ReceivePayments({ winId, props }: WinProps) {
     edit((f) => ({ ...f, customerId: id, rows: [] }));
     curRow.current = 0;
     void loadRows(id);
+  };
+
+  const setArAccount = (id: number | null) => {
+    const ar = id === defaultArId ? null : id;
+    if (ar === formRef.current.arAccountId) return;
+    edit((f) => ({ ...f, arAccountId: ar, rows: [] }));
+    curRow.current = 0;
+    void loadRows(formRef.current.customerId, ar);
   };
 
   const setAmount = (amount: number | null) =>
@@ -349,7 +372,7 @@ export function ReceivePayments({ winId, props }: WinProps) {
         pay_method: f.method.trim(),
         ref_no: f.refNo.trim(),
         account_id: f.depositTo === ufId ? null : f.depositTo,
-        ar_account_id: null,
+        ar_account_id: f.arAccountId,
         applications: f.rows
           .filter((r) => r.payment > 0 || r.discount > 0)
           .map((r) => ({
@@ -571,6 +594,20 @@ export function ReceivePayments({ winId, props }: WinProps) {
             }}
             onFocus={(e) => e.target.select()}
           />
+          {(arAccounts.length > 1 || form.arAccountId !== null) && (
+            <>
+              <label className="cap-left" htmlFor={`${winId}-ar`}>
+                A/R Account
+              </label>
+              <Combo
+                id={`${winId}-ar`}
+                options={arOptions}
+                value={form.arAccountId ?? defaultArId}
+                onChange={setArAccount}
+                disabled={loading}
+              />
+            </>
+          )}
         </div>
         {deposited && (
           <div className="msg-strip">

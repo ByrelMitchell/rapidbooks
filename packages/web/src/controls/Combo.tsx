@@ -99,8 +99,26 @@ export function Combo({
   const added = useRef<number | null>(null);
 
   // Follow the value when it changes from outside (or when the options finish loading).
+  const shownValue = useRef(value);
+  const shownLabel = useRef(valueLabel);
   useEffect(() => {
-    if (focused.current) return;
+    const changed = value !== shownValue.current;
+    shownValue.current = value;
+    if (focused.current) {
+      // The field changes its own value only on a pick or on leaving it, never while typing,
+      // so a new value while focused came from the form (Previous/Next, Save & New): show it,
+      // selected so typing replaces it. Its label arriving later (the list loading) is shown
+      // too, unless she has typed since.
+      const untouched = textRef.current === shownLabel.current;
+      if ((!changed && !untouched) || textRef.current === valueLabel) return;
+      if (value !== null && value === added.current && !options.some((o) => o.id === value)) return;
+      shownLabel.current = valueLabel;
+      setText(valueLabel);
+      setInvalid(false);
+      pendingSel.current = [0, valueLabel.length];
+      return;
+    }
+    shownLabel.current = valueLabel;
     if (value === null && invalidRef.current) return; // keep showing what was typed wrong
     if (value !== null && value === added.current && !options.some((o) => o.id === value)) return;
     setText(valueLabel);

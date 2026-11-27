@@ -138,7 +138,10 @@ export async function sendInvoiceEmail(
     text: req.body,
     attachments: [{ filename: docFileName(t), content: pdf, contentType: 'application/pdf' }],
   });
-  db.prepare("UPDATE txns SET emailed_at = datetime('now'), to_email = 0 WHERE id = ?").run(t.id);
+  // A new version, so a window still holding the old one cannot save To be e-mailed back on unseen.
+  db.prepare(
+    "UPDATE txns SET emailed_at = datetime('now'), to_email = 0, version = version + 1, updated_at = datetime('now') WHERE id = ?",
+  ).run(t.id);
   const at = (db.prepare('SELECT emailed_at FROM txns WHERE id = ?').get(t.id) as { emailed_at: string }).emailed_at;
   db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
     'email',

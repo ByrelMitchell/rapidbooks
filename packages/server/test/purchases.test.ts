@@ -417,6 +417,31 @@ describe('pay bills', () => {
   });
 });
 
+describe('0.00 bill payments that only take a discount', () => {
+  it('go when their bill is deleted or the discount is unapplied', () => {
+    const txnRow = (id: number) => db.prepare('SELECT id FROM txns WHERE id = ?').get(id);
+    const b1 = simpleBill(10000, { ref_no: 'Z1' });
+    const w1 = pay({ payments: [{ bill_id: b1, amount: 0, discount: 10000, discount_account_id: discTaken }] }).payments[0].id;
+    expect(doc(w1)).toMatchObject({ total: 0, num: '' });
+    deleteTxn(db, b1);
+    expect(txnRow(w1)).toBeUndefined();
+
+    const b2 = simpleBill(10000, { ref_no: 'Z2' });
+    const w2 = pay({ payments: [{ bill_id: b2, amount: 0, discount: 10000, discount_account_id: discTaken }] }).payments[0].id;
+    removeApplication(db, doc(w2).links_out[0].id);
+    expect(txnRow(w2)).toBeUndefined();
+    expect(openOf(b2)).toBe(10000);
+    expect(getRegister(db, checking)).toEqual([]);
+    expect(vendorBalance(steel)).toBe(10000);
+    expect(trialBalance()).toBe(0);
+    expect(txnSums()).toEqual([]);
+
+    // A numbered 0.00 check with nothing applied (how QuickBooks keeps a voided one) stays.
+    const v = save({ type: 'BILLPMT', date: '2026-03-10', num: '1060', name_id: steel, account_id: checking, amount: 0, applications: [] }).id;
+    expect(doc(v)).toMatchObject({ total: 0, num: '1060' });
+  });
+});
+
 describe('checks', () => {
   it('post Dr each line, Cr the bank', () => {
     const { id } = check({

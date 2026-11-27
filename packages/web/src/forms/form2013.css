@@ -211,6 +211,11 @@
   width: 16rem;
 }
 
+/* Fields take their color from around them (styles.css); the band's white is for its labels. */
+.f13-band .field:not(:disabled):not([aria-invalid='true']) {
+  color: var(--text);
+}
+
 .f13-band .spacer {
   flex: 1;
 }

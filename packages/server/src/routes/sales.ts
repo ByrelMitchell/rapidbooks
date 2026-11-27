@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DB } from '../db';
 import { assessFinanceCharges, getFinanceChargeSettings, previewFinanceCharges, setFinanceChargeSettings } from '../ledger/finance';
+import { systemAccount, txnRow } from '../ledger/common';
 import { removeApplication } from '../ledger/posting';
 import {
   adjacentTxns,
@@ -72,8 +73,10 @@ export function registerSalesRoutes(app: FastifyInstance, db: DB, mailer: Mailer
 
   // Customers: open invoices and credits
   app.get('/api/customers/:id/open-invoices', (req) => {
-    const q = z.object({ payment_id: OptId }).parse(req.query);
-    return listOpenInvoices(db, Id.parse(req.params).id, q.payment_id);
+    // Only the invoices in the payment's A/R account (the default one for a new payment).
+    const q = z.object({ payment_id: OptId, ar_account_id: OptId }).parse(req.query);
+    const ar = q.ar_account_id ?? (q.payment_id !== null ? txnRow(db, q.payment_id)?.ar_account_id : null) ?? systemAccount(db, 'AR');
+    return listOpenInvoices(db, Id.parse(req.params).id, q.payment_id, ar);
   });
   app.get('/api/customers/:id/credits', (req) => listCredits(db, Id.parse(req.params).id));
   app.post('/api/credits/apply', (req) => {

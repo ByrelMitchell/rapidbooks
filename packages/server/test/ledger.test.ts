@@ -129,6 +129,33 @@ describe('accounts', () => {
     createAccount(db, { name: 'Shop', type: 'EXP', parent_id: expense, description: '', inactive: false });
     expect(() => deleteAccount(db, expense)).toThrow(/subaccounts/);
   });
+
+  it('will not delete the finance charge account', () => {
+    const fc = createAccount(db, { name: 'Finance Charge Income', type: 'OINC', parent_id: null, description: '', inactive: false });
+    db.prepare("INSERT INTO company (key, value) VALUES ('fc_account_id', ?)").run(String(fc));
+    expect(() => deleteAccount(db, fc)).toThrow(/Finance charges post to this account.*Finance Charge Settings/);
+    db.prepare("UPDATE company SET value = '' WHERE key = 'fc_account_id'").run();
+    deleteAccount(db, fc);
+  });
+
+  it('will not change an account in use to or from Accounts Receivable or Accounts Payable', () => {
+    const acct = (name: string, type: string) =>
+      createAccount(db, { name, type: type as 'AR', parent_id: null, description: '', inactive: false });
+    const as = (id: number, type: string) => {
+      const a = listAccounts(db).find((x) => x.id === id)!;
+      updateAccount(db, id, { name: a.name, type: type as 'AR', parent_id: null, description: '', inactive: false });
+    };
+    const ar2 = acct('A/R 2', 'AR');
+    saveTxn(db, journal([[ar2, 100], [sales, -100]]));
+    expect(() => as(ar2, 'OCA')).toThrow(/This Accounts Receivable account cannot be changed to another type, because it has transactions/);
+    const spare = acct('Spare', 'AR');
+    as(spare, 'OCA'); // unused: fine
+    as(spare, 'AP');
+    const shop = acct('Shop', 'EXP');
+    saveTxn(db, journal([[shop, 100], [checking, -100]]));
+    expect(() => as(shop, 'AR')).toThrow(/cannot be changed to Accounts Receivable, because it has transactions/);
+    as(shop, 'COGS'); // other changes are allowed
+  });
 });
 
 describe('http api', () => {

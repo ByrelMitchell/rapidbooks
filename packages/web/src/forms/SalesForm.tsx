@@ -216,8 +216,21 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
     api.get<DocTxn>(`/api/txns/${id}`).then(
       (t) => {
         if (cancelled || busy.current || txnIdRef.current !== id) return;
-        if (isDirty()) setDoc(t);
-        else applyDoc(t);
+        if (!isDirty()) {
+          applyDoc(t);
+          return;
+        }
+        // Only an e-mail was sent since it was loaded: take that in without losing her edits.
+        // Email Later goes off unless she ticked it again herself.
+        const was = docRef.current;
+        if (was && version.current !== undefined && t.version === version.current + 1 && t.emailed_at !== was.emailed_at) {
+          version.current = t.version;
+          if (formRef.current.toEmail === was.to_email) {
+            setForm((f) => ({ ...f, toEmail: t.to_email }));
+            snapshot.current = JSON.stringify({ ...JSON.parse(snapshot.current), toEmail: t.to_email });
+          }
+        }
+        setDoc(t);
       },
       () => {
         // Deleted elsewhere, or the server is away: keep what is on screen.

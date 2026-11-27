@@ -670,7 +670,9 @@ function repostPayment(db: DB, id: number, dropped: DroppedDiscount[]) {
   const apps = db
     .prepare("SELECT to_txn AS txn_id, amount, discount, discount_account_id FROM links WHERE kind = 'apply' AND from_txn = ? ORDER BY id")
     .all(id) as PaymentInput['applications'];
-  if (p.type === 'PAYMENT' && p.total === 0 && apps.length === 0 && depositOf(db, id) === null) {
+  // A bill payment is never deposited, so an emptied 0.00 one always goes.
+  const emptied = p.total === 0 && apps.length === 0 && (p.type === 'BILLPMT' || depositOf(db, id) === null);
+  if (emptied) {
     const before = getTxn(db, id);
     db.prepare('DELETE FROM txns WHERE id = ?').run(id);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('delete', id, JSON.stringify(before));
@@ -1121,6 +1123,7 @@ function saveLockedSplits(db: DB, old: TxnHeaderRow, input: TxnInput, opts: Save
     amount: number;
     cleared: number;
   }[];
+  keepLockedLinksValid(db, old, oldSplits, splits, total, input.name_id);
   const version = old.version + 1;
   db.prepare(
     "UPDATE txns SET date = ?, num = ?, name_id = ?, memo = ?, total = ?, version = ?, updated_at = datetime('now') WHERE id = ?",
@@ -1136,6 +1139,66 @@ function saveLockedSplits(db: DB, old: TxnHeaderRow, input: TxnInput, opts: Save
   });
   db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run('update', old.id, JSON.stringify(input));
   return { id: old.id, version };
+}
+
+/**
+ * A journal edit of a locked transaction must leave its links true, as its form would: a
+ * deposited payment keeps its amount, customer and deposit account, a deposit keeps what it
+ * takes out of Undeposited Funds, and nothing drops below what has been applied.
+ */
+function keepLockedLinksValid(
+  db: DB,
+  old: TxnHeaderRow,
+  oldSplits: { account_id: number; amount: number }[],
+  splits: { account_id: number; amount: number }[],
+  total: number,
+  nameId: number | null,
+) {
+  const what = (old.qb_type || TXN_TYPE_LABELS_LOWER[old.type] || old.type).toLowerCase();
+  const sumOn = (rows: { account_id: number; amount: number }[], account: number) =>
+    rows.filter((s) => s.account_id === account).reduce((t, s) => t + s.amount, 0);
+
+  if (old.type === 'PAYMENT' && depositOf(db, old.id) !== null) {
+    const to = old.account_id;
+    if (to === null || sumOn(splits, to) !== sumOn(oldSplits, to) || nameId !== old.name_id) {
+      throw new AppError(
+        400,
+        `This ${what} has been deposited, so its amount, customer and deposit account cannot be changed. Remove it from the deposit first.`,
+      );
+    }
+  }
+  if (old.type === 'DEPOSIT' && db.prepare("SELECT 1 FROM links WHERE kind = 'deposit' AND from_txn = ?").get(old.id)) {
+    const uf = systemAccount(db, 'UNDEPOSITED');
+    if (sumOn(splits, uf) !== sumOn(oldSplits, uf)) {
+      throw new AppError(
+        400,
+        `Payments received into Undeposited Funds are in this ${what}, so its Undeposited Funds lines must still total ${money(-sumOn(oldSplits, uf))}.`,
+      );
+    }
+  }
+
+  const hasApplications = db.prepare("SELECT 1 FROM links WHERE kind = 'apply' AND (from_txn = ? OR to_txn = ?)").get(old.id, old.id);
+  if (!hasApplications) return;
+  if (nameId !== old.name_id) {
+    throw new AppError(400, `Payments or credits have been applied to this ${what}, so its name cannot be changed. Remove those applications first.`);
+  }
+  if (old.type === 'INVOICE' || old.type === 'BILL') {
+    const applied = appliedTo(db, old.id);
+    if (total < applied) {
+      throw new AppError(
+        400,
+        `Payments and credits of ${money(applied)} have been applied to this ${what}, so its total cannot be less than that. Remove some of them first (in ${old.type === 'BILL' ? 'Pay Bills' : 'Receive Payments'}).`,
+      );
+    }
+  } else {
+    const applied = appliedFrom(db, old.id);
+    if (total < applied) {
+      throw new AppError(
+        400,
+        `${money(applied)} of this ${what} has been applied, so its total cannot be less than that. Remove some of those applications first.`,
+      );
+    }
+  }
 }
 
 const TXN_TYPE_LABELS_LOWER: Record<string, string> = {

@@ -85,6 +85,30 @@ export function createAccount(db: DB, input: AccountInput): number {
   }
 }
 
+const count = (db: DB, sql: string, ...args: unknown[]) => (db.prepare(sql).get(...args) as { n: number }).n;
+
+/** Whether the finance-charge preferences post to this account. */
+const isFinanceChargeAccount = (db: DB, id: number) =>
+  count(db, "SELECT COUNT(*) AS n FROM company WHERE key = 'fc_account_id' AND value = ?", String(id)) > 0;
+
+/**
+ * Why an account in use cannot become, or stop being, Accounts Receivable or Accounts
+ * Payable (as in QuickBooks): its transactions, documents, items or preferences assume
+ * its type. Null when nothing uses it.
+ */
+function receivablePayableUse(db: DB, id: number): string | null {
+  if (count(db, 'SELECT COUNT(*) AS n FROM splits WHERE account_id = ?', id) > 0) return 'it has transactions';
+  if (count(db, 'SELECT COUNT(*) AS n FROM txns WHERE ar_account_id = ? OR ap_account_id = ? OR account_id = ?', id, id, id) > 0) {
+    return 'transactions use it';
+  }
+  if (count(db, 'SELECT COUNT(*) AS n FROM items WHERE account_id = ? OR purchase_account_id = ?', id, id) > 0) return 'items post to it';
+  if (count(db, 'SELECT COUNT(*) AS n FROM payroll_items WHERE expense_account_id = ? OR liability_account_id = ?', id, id) > 0) {
+    return 'payroll items post to it';
+  }
+  if (isFinanceChargeAccount(db, id)) return 'finance charges post to it';
+  return null;
+}
+
 export function updateAccount(db: DB, id: number, input: AccountInput) {
   const old = getRow(db, id);
   checkParent(db, input, id);
@@ -92,6 +116,20 @@ export function updateAccount(db: DB, id: number, input: AccountInput) {
     if (old.system_role) throw new AppError(400, 'The type of this account cannot be changed.');
     const kids = db.prepare('SELECT COUNT(*) AS n FROM accounts WHERE parent_id = ?').get(id) as { n: number };
     if (kids.n > 0) throw new AppError(400, 'Change the type of the subaccounts first.');
+    const arAp = (t: string) => t === 'AR' || t === 'AP';
+    if (arAp(old.type) || arAp(input.type)) {
+      const why = receivablePayableUse(db, id);
+      if (why) {
+        const label = (t: string) => (t === 'AR' ? 'Accounts Receivable' : t === 'AP' ? 'Accounts Payable' : null);
+        const what = label(arAp(old.type) ? old.type : input.type)!;
+        throw new AppError(
+          400,
+          arAp(old.type)
+            ? `This ${what} account cannot be changed to another type, because ${why}.`
+            : `This account cannot be changed to ${what}, because ${why}.`,
+        );
+      }
+    }
   }
   try {
     db.prepare('UPDATE accounts SET name = ?, type = ?, parent_id = ?, description = ?, inactive = ? WHERE id = ?').run(
@@ -127,6 +165,12 @@ export function deleteAccount(db: DB, id: number) {
     .get(id, id) as { n: number };
   if (payroll.n > 0) {
     throw new AppError(400, 'Payroll items post to this account, so it cannot be deleted. Change those payroll items first.');
+  }
+  if (isFinanceChargeAccount(db, id)) {
+    throw new AppError(
+      400,
+      'Finance charges post to this account, so it cannot be deleted. Choose another account in Finance Charge Settings (in Assess Finance Charges) first.',
+    );
   }
   db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
 }

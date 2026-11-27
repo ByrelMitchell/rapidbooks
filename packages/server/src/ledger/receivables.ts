@@ -49,9 +49,10 @@ const inList = (ids: number[]) => `(${ids.map(() => '?').join(', ') || 'NULL'})`
 /**
  * Open invoices of a customer and its jobs, oldest first. With paymentId (editing a
  * payment), what that payment applied is added back, so its invoices stay listed and
- * open_balance is what is open apart from it.
+ * open_balance is what is open apart from it. With arAccountId, only the invoices in that
+ * Accounts Receivable account (the only ones a payment in it can pay).
  */
-export function listOpenInvoices(db: DB, customerId: number, paymentId: number | null = null): OpenInvoice[] {
+export function listOpenInvoices(db: DB, customerId: number, paymentId: number | null = null, arAccountId?: number): OpenInvoice[] {
   const names = selfAndDescendants(db, customerId);
   const rows = db
     .prepare(
@@ -61,10 +62,10 @@ export function listOpenInvoices(db: DB, customerId: number, paymentId: number |
               COALESCE((SELECT SUM(l.amount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS applied_by_payment,
               COALESCE((SELECT SUM(l.discount) FROM links l WHERE l.kind = 'apply' AND l.to_txn = t.id AND l.from_txn = ?), 0) AS discount_by_payment
          FROM txns t LEFT JOIN terms tm ON tm.id = t.terms_id
-        WHERE t.type = 'INVOICE' AND t.name_id IN ${inList(names)}
+        WHERE t.type = 'INVOICE' AND t.name_id IN ${inList(names)} AND (? IS NULL OR t.ar_account_id = ?)
         ORDER BY t.date, t.id`,
     )
-    .all(paymentId, paymentId, paymentId, ...names) as (Omit<OpenInvoice, 'is_finance_charge' | 'full_name' | 'discount_date'> & {
+    .all(paymentId, paymentId, paymentId, ...names, arAccountId ?? null, arAccountId ?? null) as (Omit<OpenInvoice, 'is_finance_charge' | 'full_name' | 'discount_date'> & {
     is_finance_charge: number;
     discount_days: number | null;
   })[];
