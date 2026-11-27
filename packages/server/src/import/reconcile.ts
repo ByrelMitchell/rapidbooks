@@ -147,7 +147,12 @@ interface OpenDocRow {
 /** Open invoices and unapplied payments/credits (AR), or open bills and unapplied bill credits/payments (AP), as of a date. */
 export function openDocs(db: DB, side: 'AR' | 'AP', asOf: string): OpenDocRow[] {
   const names = nameMap(db);
-  const [docType, creditTypes] = side === 'AR' ? ['INVOICE', ['PAYMENT', 'CREDITMEMO']] : ['BILL', ['BILLCREDIT', 'BILLPMT']];
+  // A QuickBooks Discount (a write-off) is imported under its own type name: a credit on
+  // the side whose account it posts to. A refund check to a customer (a check with an
+  // A/R account) is an A/R document, like an invoice.
+  const [docTypes, creditTypes] = side === 'AR' ? [['INVOICE', 'CHECK'], ['PAYMENT', 'CREDITMEMO', 'Discount']] : [['BILL'], ['BILLCREDIT', 'BILLPMT', 'Discount']];
+  const sideAccount = side === 'AR' ? 'ar_account_id' : 'ap_account_id';
+  const types = [...docTypes, ...creditTypes];
   const applied = (col: 'to_txn' | 'from_txn', withDiscount: boolean) =>
     new Map(
       (
@@ -163,11 +168,11 @@ export function openDocs(db: DB, side: 'AR' | 'AP', asOf: string): OpenDocRow[] 
   const toDoc = applied('to_txn', true);
   const fromCredit = applied('from_txn', false);
   const txns = db
-    .prepare(`SELECT id, type, num, date, name_id, total FROM txns WHERE type IN (?, ?, ?) AND date <= ? ORDER BY date, id`)
-    .all(docType, ...creditTypes, asOf) as { id: number; type: string; num: string; date: string; name_id: number | null; total: number }[];
+    .prepare(`SELECT id, type, num, date, name_id, total FROM txns WHERE type IN (${types.map(() => '?').join(', ')}) AND (type NOT IN ('Discount', 'CHECK') OR ${sideAccount} IS NOT NULL) AND date <= ? ORDER BY date, id`)
+    .all(...types, asOf) as { id: number; type: string; num: string; date: string; name_id: number | null; total: number }[];
   const out: OpenDocRow[] = [];
   for (const t of txns) {
-    const isDoc = t.type === docType;
+    const isDoc = docTypes.includes(t.type);
     const open = isDoc ? t.total - (toDoc.get(t.id) ?? 0) : -(t.total - (fromCredit.get(t.id) ?? 0));
     if (open === 0) continue;
     out.push({ name: t.name_id === null ? '' : (names.get(t.name_id) ?? ''), kind: isDoc ? 'doc' : 'credit', type: t.type, num: t.num, date: t.date, open });
@@ -183,14 +188,15 @@ export function openDocs(db: DB, side: 'AR' | 'AP', asOf: string): OpenDocRow[] 
  */
 function nameBalances(db: DB, side: 'AR' | 'AP', asOf: string): Map<string, number> {
   const names = nameMap(db);
-  const docTypes = side === 'AR' ? ['INVOICE', 'PAYMENT', 'CREDITMEMO'] : ['BILL', 'BILLCREDIT', 'BILLPMT'];
+  const docTypes = side === 'AR' ? ['INVOICE', 'PAYMENT', 'CREDITMEMO', 'Discount'] : ['BILL', 'BILLCREDIT', 'BILLPMT', 'Discount'];
   const rows = db
     .prepare(
       `SELECT COALESCE(s.name_id, t.name_id) AS name_id, SUM(s.amount) AS n
          FROM splits s JOIN txns t ON t.id = s.txn_id JOIN accounts a ON a.id = s.account_id
-        WHERE a.type = ? AND t.date <= ? AND t.type NOT IN (?, ?, ?) GROUP BY 1`,
+        WHERE a.type = ? AND t.date <= ? AND t.type NOT IN (${docTypes.map(() => '?').join(', ')})
+          AND NOT (t.type = 'CHECK' AND t.ar_account_id IS NOT NULL AND ? = 'AR') GROUP BY 1`,
     )
-    .all(side, asOf, ...docTypes) as { name_id: number | null; n: number }[];
+    .all(side, asOf, ...docTypes, side) as { name_id: number | null; n: number }[];
   const out = new Map<string, number>();
   for (const d of openDocs(db, side, asOf)) out.set(d.name.toLowerCase(), (out.get(d.name.toLowerCase()) ?? 0) + d.open);
   for (const r of rows) {

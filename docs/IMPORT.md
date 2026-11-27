@@ -359,7 +359,12 @@ so it can be adjusted quickly. On the first trial run, check these:
     "General Journal", "Check", "Liability Check" (imported as a check), "Bill",
     "Credit" (vendor credit), "Bill Pmt -Check", "Bill Pmt -CCard", "Transfer",
     "Paycheck", "Finance Chrg"/"Finance Charge" (an invoice). Any other type is imported
-    as posted under its own name, locked.
+    as posted under its own name, locked. "Discount" (a discount or write-off entered in
+    Receive Payments or Pay Bills without a payment: bad debt, a donation) is such a type,
+    but is applied to the customer's invoices or vendor's bills like a credit. A check
+    with an Accounts Receivable line is a refund to the customer: payments and credits
+    are applied to it like an invoice (the payment is then locked, as the Receive
+    Payments form applies only to invoices).
 14. A payment with an early-payment discount, and a bill payment with a discount, have
     extra rows for the discount account; the A/R or A/P row may be one row for amount +
     discount (accepted as editable) or two.

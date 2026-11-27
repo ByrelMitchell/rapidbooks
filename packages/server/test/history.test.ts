@@ -7,7 +7,7 @@ import { openDb, type DB } from '../src/db';
 import { runHistory } from '../src/import/cli';
 import { importHistory, type HistoryResult } from '../src/import/history';
 import { itemName, parseJournal } from '../src/import/journal';
-import { reconcile } from '../src/import/reconcile';
+import { openDocs, reconcile } from '../src/import/reconcile';
 import { decodeText, parseAmount, parsePeriodHeader, parseQbDate, tokenize } from '../src/import/table';
 import { getTxn, saveTxn } from '../src/ledger/posting';
 
@@ -409,6 +409,36 @@ describe('QuickBooks 2013 exports: last account names only, flat reports', () =>
     };
     expect(txn('1').splits.map((s) => full(s.account_id))).toEqual(['Checking', 'Supplies:tooling', 'Supplies:Swiss', 'Repairs:swiss', "Supplies:1' bar", 'Taxes:sales']);
     expect(txn('2').splits.map((s) => full(s.account_id))).toEqual(['Checking', 'Sales:Tooling']);
+  });
+
+  it('applies Discount write-offs and payments to invoices and refund checks', () => {
+    const j = [
+      '"Trans #","Type","Date","Num","Name","Memo","Account","Debit","Credit","Account Type"',
+      '"1","Check","01/05/2025","900","Acme",,"Checking","",30.00,"Bank"',
+      ',,,,"Acme",,"Accounts Receivable",30.00,"","Accounts Receivable"',
+      ',,,,,,,30.00,30.00,',
+      '"2","Invoice","01/10/2025","1","Acme",,"Accounts Receivable",100.00,"","Accounts Receivable"',
+      ',,,,"Acme",,"tooling","",100.00,"Income"',
+      ',,,,,,,100.00,100.00,',
+      '"3","Invoice","01/11/2025","2","Acme",,"Accounts Receivable",50.00,"","Accounts Receivable"',
+      ',,,,"Acme",,"tooling","",50.00,"Income"',
+      ',,,,,,,50.00,50.00,',
+      '"4","Discount","02/01/2025",,"Acme","went bankrupt","Accounts Receivable","",100.00,"Accounts Receivable"',
+      ',,,,"Acme",,"tooling",100.00,"","Expense"',
+      ',,,,,,,100.00,100.00,',
+      '"5","Payment","03/01/2025","77","Acme",,"Checking",80.00,"","Bank"',
+      ',,,,"Acme",,"Accounts Receivable","",80.00,"Accounts Receivable"',
+      ',,,,,,,80.00,80.00,',
+      '"TOTAL",,,,,,,360.00,360.00,',
+    ].join('\r\n');
+    const h = importHistory(db, { iif: Buffer.from(lists), journal: j });
+    expect(h.skipped).toEqual([]);
+    // Every document is paid: the write-off and the payment were applied to the two
+    // invoices and to the refund check.
+    expect(openDocs(db, 'AR', '2025-12-31')).toEqual([]);
+    const applied = db.prepare(`SELECT f.type AS f, t.type AS t FROM links l JOIN txns f ON f.id = l.from_txn JOIN txns t ON t.id = l.to_txn WHERE l.kind = 'apply'`).all() as { f: string; t: string }[];
+    expect(new Set(applied.map((a) => a.f))).toEqual(new Set(['Discount', 'PAYMENT']));
+    expect(applied.map((a) => a.t)).toContain('CHECK');
   });
 
   it('reconciles a flat Profit & Loss and an all-dates Trial Balance', () => {

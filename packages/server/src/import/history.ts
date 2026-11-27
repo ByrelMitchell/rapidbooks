@@ -13,7 +13,7 @@ import { blankHeader, importWriter, type Built, type Header, type ImportLink, ty
 import { createName } from '../lists/names';
 import { importIif } from './iif';
 import { parseJournals, type JournalFile, type JournalFileSummary, type JournalRow, type JournalTxn } from './journal';
-import { norm, PAID_VALUES, TYPE_MAP } from './layout';
+import { CREDIT_QB_TYPES, norm, PAID_VALUES, TYPE_MAP } from './layout';
 import { parseOpenDocs, type OpenDocsReport } from './reports';
 
 // The history importer: a fresh company from QuickBooks' list export (IIF) and its
@@ -713,11 +713,16 @@ function fillHeader(p: Plan, L: Lookups, uf: number) {
       h.bill_addr = address;
       break;
     }
-    case 'CHECK':
+    case 'CHECK': {
       h.account_id = p.splits[0].account_id;
       h.total = -p.splits[0].amount;
       h.bill_addr = address;
+      // A refund check to a customer debits A/R; QuickBooks applies the customer's
+      // payments and credits to it like an invoice.
+      const ar = firstOfType('AR');
+      if (ar >= 0 && p.header.name_id !== null && sumOn(p.splits[ar].account_id) > 0) h.ar_account_id = p.splits[ar].account_id;
       break;
+    }
     case 'TRANSFER': {
       h.name_id = null;
       const from = p.splits.find((s) => s.amount < 0);
@@ -739,6 +744,12 @@ function fillHeader(p: Plan, L: Lookups, uf: number) {
     default:
       // A QuickBooks type without a RapidBooks form: journal-style, under its own type name.
       h.account_id = p.splits[0].account_id;
+      if (CREDIT_QB_TYPES.has(norm(p.qbType))) {
+        const ar = firstOfType('AR');
+        const ap = firstOfType('AP');
+        if (ar >= 0) h.ar_account_id = p.splits[ar].account_id;
+        else if (ap >= 0) h.ap_account_id = p.splits[ap].account_id;
+      }
       p.lockCategory = `${CATEGORY.noForm}: ${p.qbType}`;
       p.lockNote = `QuickBooks type "${p.qbType}" has no form in RapidBooks, so it was imported as posted`;
   }
@@ -748,12 +759,19 @@ function fillHeader(p: Plan, L: Lookups, uf: number) {
 // Applications
 
 function roleOf(p: Plan, L: Lookups, order: number): Role | undefined {
-  const side = AR_TYPES.has(p.type) ? 'AR' : AP_TYPES.has(p.type) ? 'AP' : null;
+  const credit = CREDIT_QB_TYPES.has(norm(p.qbType));
+  const refund = p.type === 'CHECK' && p.header.ar_account_id !== null;
+  const side =
+    AR_TYPES.has(p.type) || refund || (credit && p.header.ar_account_id !== null)
+      ? 'AR'
+      : AP_TYPES.has(p.type) || (credit && p.header.ap_account_id !== null)
+        ? 'AP'
+        : null;
   if (!side || p.header.name_id === null) return undefined;
   const account = side === 'AR' ? p.header.ar_account_id : p.header.ap_account_id;
   if (account === null) return undefined;
   const onAccount = p.splits.filter((s) => s.account_id === account).reduce((t, s) => t + s.amount, 0);
-  const kind: Role['kind'] = p.type === 'INVOICE' || p.type === 'BILL' ? 'doc' : 'credit';
+  const kind: Role['kind'] = p.type === 'INVOICE' || p.type === 'BILL' || refund ? 'doc' : 'credit';
   // A/R docs are debits, A/R credits credits; A/P the other way round.
   const amount = side === 'AR' ? (kind === 'doc' ? onAccount : -onAccount) : kind === 'doc' ? -onAccount : onAccount;
   if (amount <= 0) return undefined;
@@ -936,6 +954,8 @@ const DOC_LABEL: Record<string, string> = {
   BILL: 'bill',
   BILLCREDIT: 'bill credit',
   BILLPMT: 'bill payment',
+  Discount: 'discount',
+  CHECK: 'refund check',
 };
 
 function describe(r: Role, L: Lookups): string {

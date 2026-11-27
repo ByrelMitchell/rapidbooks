@@ -47,6 +47,14 @@ export const JOURNAL_COLUMNS = {
 export type JournalField = keyof typeof JOURNAL_COLUMNS;
 
 /**
+ * QuickBooks types (normalised) with no RapidBooks form that are applied to a customer's
+ * invoices (when they post to A/R) or a vendor's bills (A/P): "Discount", the discount or
+ * write-off entered in Receive Payments or Pay Bills without a payment (bad debt, a
+ * donation...). Imported as posted, but used as a credit when working out what was paid.
+ */
+export const CREDIT_QB_TYPES = new Set(['discount']);
+
+/**
  * The Journal's optional Account Type column ("Income", "Other Current Asset"...),
  * normalised, to RapidBooks account type codes. It tells apart accounts whose last name
  * is the same (Sales:Tooling, Supplies:tooling) when the Journal shows only that name.
