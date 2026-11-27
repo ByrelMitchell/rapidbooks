@@ -330,6 +330,96 @@ describe('history import from several Journal files', () => {
   });
 });
 
+describe('QuickBooks 2013 exports: last account names only, flat reports', () => {
+  const t = (...cells: string[]) => cells.join('\t');
+  const lists = [
+    t('!ACCNT', 'NAME', 'ACCNTTYPE', 'EXTRA'),
+    t('ACCNT', 'Checking', 'BANK', ''),
+    t('ACCNT', 'Sales', 'INC', ''),
+    t('ACCNT', 'Sales:Tooling', 'INC', ''),
+    t('ACCNT', 'Supplies', 'EXP', ''),
+    t('ACCNT', 'Supplies:tooling', 'EXP', ''),
+    t('ACCNT', 'Supplies:Swiss', 'EXP', ''),
+    t('ACCNT', "Supplies:1' bar", 'EXP', ''), // the IIF writes the inch mark as '
+    t('ACCNT', 'Repairs', 'EXP', ''),
+    t('ACCNT', 'Repairs:swiss', 'EXP', ''),
+    t('ACCNT', 'Taxes', 'EXP', ''),
+    t('ACCNT', 'Taxes:sales', 'EXP', ''),
+    t('ACCNT', 'Retained Earnings', 'EQUITY', 'RETEARNINGS'),
+  ].join('\r\n');
+  const journal = [
+    '"Trans #","Type","Date","Num","Name","Memo","Account","Debit","Credit","Account Type"',
+    '"1","Check","01/05/2024","101",,,"Checking","",100.00,"Bank"',
+    ',,,,,,"tooling",40.00,"","Expense"',
+    ',,,,,,"Swiss",10.00,"","Expense"',
+    ',,,,,,"swiss",20.00,"","Expense"',
+    ',,,,,,"1"" bar",5.00,"","Expense"',
+    ',,,,,,"sales",25.00,"","Expense"',
+    ',,,,,,,100.00,100.00,',
+    '"2","Deposit","03/02/2025",,,,"Checking",300.00,"","Bank"',
+    ',,,,,,"tooling","",300.00,"Income"',
+    ',,,,,,,300.00,300.00,',
+    '"TOTAL",,,,,,,400.00,400.00,',
+  ].join('\r\n');
+  const profitLoss = [
+    ',"Jan 1, 24 - Dec 31, 25"',
+    '"Ordinary Income/Expense",""',
+    '"Income",""',
+    '"Sales",""',
+    '"Tooling",300.00',
+    '"Total Sales",300.00',
+    '"Total Income",300.00',
+    '"Gross Profit",300.00',
+    '"Expense",""',
+    '"Repairs",""',
+    '"swiss",20.00',
+    '"Total Repairs",20.00',
+    '"Supplies",""',
+    '"1"" bar",5.00',
+    '"Swiss",10.00',
+    '"tooling",40.00',
+    '"Total Supplies",55.00',
+    '"Taxes",""',
+    '"sales",25.00',
+    '"Total Taxes",25.00',
+    '"Total Expense",100.00',
+    '"Net Ordinary Income",200.00',
+    '"Net Income",200.00',
+  ].join('\r\n');
+  // Dated From blank: income and expenses over all dates, no Retained Earnings line.
+  const trialBalance = [
+    ',"Dec 31, 25"',
+    ',"Debit","Credit"',
+    '"Checking",200.00,""',
+    '"Sales:Tooling","",300.00',
+    '"Supplies:tooling",40.00,""',
+    '"Supplies:Swiss",10.00,""',
+    '"Supplies:1"" bar",5.00,""',
+    '"Repairs:swiss",20.00,""',
+    '"Taxes:sales",25.00,""',
+    '"TOTAL",300.00,300.00',
+  ].join('\r\n');
+
+  it('finds each account by its Account Type, its capitalisation and either inch mark', () => {
+    const h = importHistory(db, { iif: Buffer.from(lists), journal });
+    expect(h.createdAccounts).toEqual([]);
+    const full = (id: number): string => {
+      const a = db.prepare('SELECT name, parent_id FROM accounts WHERE id = ?').get(id) as { name: string; parent_id: number | null };
+      return a.parent_id === null ? a.name : `${full(a.parent_id)}:${a.name}`;
+    };
+    expect(txn('1').splits.map((s) => full(s.account_id))).toEqual(['Checking', 'Supplies:tooling', 'Supplies:Swiss', 'Repairs:swiss', "Supplies:1' bar", 'Taxes:sales']);
+    expect(txn('2').splits.map((s) => full(s.account_id))).toEqual(['Checking', 'Sales:Tooling']);
+  });
+
+  it('reconciles a flat Profit & Loss and an all-dates Trial Balance', () => {
+    const h = importHistory(db, { iif: Buffer.from(lists), journal });
+    const rec = reconcile(db, h, { trialBalance, asOf: '2025-12-31', profitLoss: [{ data: profitLoss }] });
+    const status = Object.fromEntries(rec.sections.filter((s) => s.status !== 'INFO').map((s) => [s.title, s.status]));
+    expect(status).toMatchObject({ 'Trial Balance as of 12/31/2025': 'PASS', 'Profit & Loss 01/01/2024 - 12/31/2025': 'PASS' });
+    expect(rec.text).toMatch(/compared over all dates/);
+  });
+});
+
 describe('reconciliation', () => {
   const verify = () => ({
     trialBalance: fx('tb.csv'),

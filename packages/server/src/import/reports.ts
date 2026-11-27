@@ -37,28 +37,37 @@ function readGrouped(data: Uint8Array | string, isHeader: (cells: string[]) => b
   if (col.account !== undefined) labelCols.unshift(col.account);
   if (col.name !== undefined && col.type === undefined) labelCols.unshift(col.name);
 
+  const body = (rows.slice(h + 1) as TableRow[])
+    .filter((r) => !isBlankRow(r.cells))
+    .map((r) => {
+      for (let k = 0; k < labelCols.length; k++) {
+        const v = (r.cells[labelCols[k]] ?? '').trim();
+        if (v !== '') return { r, label: v, depth: k };
+      }
+      return { r, label: '', depth: 0 };
+    });
+  // Flat layout (QuickBooks 2013's .csv export): every label in one column, no indent.
+  // Nesting then comes from the rows themselves: a heading opens a group inside the
+  // current one, and "Total X" closes group X (and any left open inside it).
+  const flat = body.every((b) => b.depth === 0);
+
   const out: Grouped['rows'] = [];
   const stack: string[] = [];
-  for (const r of rows.slice(h + 1) as TableRow[]) {
-    if (isBlankRow(r.cells)) continue;
-    let label = '';
-    let depth = 0;
-    for (let k = 0; k < labelCols.length; k++) {
-      const v = (r.cells[labelCols[k]] ?? '').trim();
-      if (v !== '') {
-        label = v;
-        depth = k;
-        break;
-      }
-    }
-    out.push({ line: r.line, cells: r.cells, label, depth, path: label === '' ? [...stack] : stack.slice(0, depth) });
+  for (const { r, label, depth } of body) {
+    out.push({ line: r.line, cells: r.cells, label, depth, path: label === '' || flat ? [...stack] : stack.slice(0, depth) });
     // Is it a group heading (a label and nothing else)?
     const others = r.cells.some((c, i) => i !== labelCols[depth] && c.trim() !== '');
     if (label !== '' && !others && !SUBTOTAL_LABEL.test(label) && !GRAND_TOTAL.test(label)) {
-      stack.length = depth;
-      stack[depth] = label;
+      if (flat) stack.push(label);
+      else {
+        stack.length = depth;
+        stack[depth] = label;
+      }
     } else if (SUBTOTAL_LABEL.test(label)) {
-      stack.length = Math.min(stack.length, depth); // "Total X" closes group X
+      if (flat) {
+        const closes = stack.lastIndexOf(label.replace(SUBTOTAL_LABEL, '').trim());
+        stack.length = closes >= 0 ? closes : Math.max(0, stack.length - 1);
+      } else stack.length = Math.min(stack.length, depth); // "Total X" closes group X
     }
   }
   return { header, col, labelCols, rows: out };

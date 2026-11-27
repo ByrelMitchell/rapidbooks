@@ -47,6 +47,7 @@ Pick the **verification date**: the last day you want to compare, normally today
    - Open Balance, Paid
    - Name Address (or Name Street1, Name Street2, Name City, Name State, Name Zip)
    - Source Name, Pay Meth, Billing Status
+   - Account Type (tells apart accounts whose names end the same, see 9.6)
 4. **Filters** tab: there should be no filters except the date. If you see one for
    Transaction Type or Account, select it and click **Remove Selected Filter**.
 5. **OK**. The report may take a minute or two to build.
@@ -331,7 +332,14 @@ so it can be adjusted quickly. On the first trial run, check these:
    Terms, Due Date etc. are taken from it (or the first row that has them).
 6. Account names are full colon-separated names ("Utilities:Electric"); an account
    number in front ("6100 · Rent") is removed. A plain name that is unique as a
-   subaccount name is also accepted.
+   subaccount name is also accepted. Her QuickBooks 2013 prints only the last part
+   ("tooling" for both Sales:Tooling and Supplies:tooling). Such a name is narrowed down
+   by the **Account Type** column (add it in Modify Report), then by its exact
+   capitalisation ("Swiss" and "swiss" are different accounts), then by the accounts the
+   line's item posts to. A name still shared by two accounts of the same type ("electric":
+   Supplies:electric and Utilities:electric) is imported into one created account of
+   that name, which the Trial Balance shows as differing. The inch mark is matched either
+   way: the list export writes 1' bar where the Journal has 1" bar.
 7. Item names in the Item column are full names or unique short names. QuickBooks 2013
    writes "Name (Description)", or "(Description)" for a line without an item; the
    description, matched against the Item Description column, is removed.
@@ -360,12 +368,16 @@ so it can be adjusted quickly. On the first trial run, check these:
 
 15. Grouped layout: a customer, vendor or parent account is on its own row in a leading
     unlabelled column; its rows follow, indented one column further; "Total ..." closes
-    the group; "TOTAL" ends the report.
+    the group; "TOTAL" ends the report. QuickBooks 2013's .csv export is flat instead:
+    every label in the first column. Then a label with no amount opens a group inside the
+    current one and "Total X" closes group X.
 16. Open Invoices / Unpaid Bills: columns Type, Date, Num, Open Balance; payments and
     credits show negative open balances. Aging summaries: a TOTAL column per name.
 17. Trial Balance: Debit and Credit columns; income and expense accounts are
     year-to-date and prior years' profit is in Retained Earnings (fiscal year from
-    `--fiscal-year-start`, default January).
+    `--fiscal-year-start`, default January). With From left blank her QuickBooks prints
+    them over all dates instead, with no Retained Earnings; the comparison uses whichever
+    of the two the report agrees with and says which.
 18. Profit & Loss: one amount column per period, headed like "Jan - Dec 25", "Jan 1 -
     Dec 31, 25" or "2025"; a parent account's own amount is the row "Parent - Other";
     rows "Gross Profit", "Net Ordinary Income", "Net Income" etc. are totals.

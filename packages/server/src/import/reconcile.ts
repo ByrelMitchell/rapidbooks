@@ -68,8 +68,11 @@ function accounts(db: DB): { list: Acct[]; byFull: Map<string, Acct> } {
   };
   const list = rows.map((r) => ({ id: r.id, type: r.type, full: full(r.id), role: r.system_role }));
   list.sort((a, b) => a.full.localeCompare(b.full));
-  return { list, byFull: new Map(list.map((a) => [a.full.toLowerCase(), a])) };
+  return { list, byFull: new Map(list.map((a) => [key(a.full), a])) };
 }
+
+/** Lookup key of an account name: lower case, the inch mark " written as ' (as the IIF list export does). */
+const key = (s: string) => s.toLowerCase().replace(/"/g, "'");
 
 /** The account a report line names: its label, with as many of the group labels above it as make a known account. */
 function resolve(line: AccountLine, byFull: Map<string, Acct>): Acct | undefined {
@@ -77,11 +80,11 @@ function resolve(line: AccountLine, byFull: Map<string, Acct>): Acct | undefined
   const label = line.label.replace(PARENT_OTHER, '');
   const path = other && line.path.length > 0 && line.path[line.path.length - 1].toLowerCase() === label.toLowerCase() ? line.path.slice(0, -1) : line.path;
   for (let k = 0; k <= path.length; k++) {
-    const hit = byFull.get([...path.slice(k), label].join(':').toLowerCase());
+    const hit = byFull.get(key([...path.slice(k), label].join(':')));
     if (hit) return hit;
   }
-  const leaf = label.split(':').pop()!.toLowerCase();
-  const leaves = [...byFull.values()].filter((a) => a.full.split(':').pop()!.toLowerCase() === leaf);
+  const leaf = key(label.split(':').pop()!);
+  const leaves = [...byFull.values()].filter((a) => key(a.full.split(':').pop()!) === leaf);
   return leaves.length === 1 ? leaves[0] : undefined;
 }
 
@@ -99,8 +102,12 @@ const lastDate = (db: DB) => (db.prepare('SELECT MAX(date) AS d FROM txns').get(
 
 // ---------------------------------------------------------------------------
 
-/** RapidBooks' trial balance as of a date, QuickBooks style: P&L accounts year to date, prior years' profit in Retained Earnings. */
-export function trialBalance(db: DB, asOf: string, fyStartMonth = 1): Map<number, number> {
+/**
+ * RapidBooks' trial balance as of a date, QuickBooks style: P&L accounts year to date,
+ * prior years' profit in Retained Earnings. With `allDates`, as QuickBooks prints it for
+ * a report dated From blank: every account over all dates, nothing in Retained Earnings.
+ */
+export function trialBalance(db: DB, asOf: string, fyStartMonth = 1, allDates = false): Map<number, number> {
   const [y, m] = asOf.split('-').map(Number);
   const fyYear = m >= fyStartMonth ? y : y - 1;
   const fyStart = `${fyYear}-${String(fyStartMonth).padStart(2, '0')}-01`;
@@ -118,7 +125,7 @@ export function trialBalance(db: DB, asOf: string, fyStartMonth = 1): Map<number
   let priorProfit = 0;
   let retained: number | null = null;
   for (const r of rows) {
-    if (PL_TYPES.has(r.type)) {
+    if (PL_TYPES.has(r.type) && !allDates) {
       out.set(r.id, r.ytd);
       priorProfit += r.prior;
     } else out.set(r.id, r.all_time);
@@ -198,7 +205,6 @@ function nameBalances(db: DB, side: 'AR' | 'AP', asOf: string): Map<string, numb
 function compareTrialBalance(db: DB, data: Uint8Array | string, asOf: string, fy: number): Section {
   const { list, byFull } = accounts(db);
   const tb = parseTrialBalance(data);
-  const ours = trialBalance(db, asOf, fy);
   const theirs = new Map<number, number>();
   const differences: string[] = [...tb.warnings];
   for (const l of tb.lines) {
@@ -209,6 +215,14 @@ function compareTrialBalance(db: DB, data: Uint8Array | string, asOf: string, fy
     }
     theirs.set(a.id, (theirs.get(a.id) ?? 0) + l.amounts[0]);
   }
+  // QuickBooks prints income and expenses year to date (report dated From the start of
+  // the year, or by default) or over all dates (From left blank). Compare with the basis
+  // its report agrees with on more accounts, and say which.
+  const ytd = trialBalance(db, asOf, fy);
+  const all = trialBalance(db, asOf, fy, true);
+  const agree = (m: Map<number, number>) => list.filter((a) => (theirs.get(a.id) ?? 0) === (m.get(a.id) ?? 0)).length;
+  const allDates = agree(all) > agree(ytd);
+  const ours = allDates ? all : ytd;
   const w = [Math.max(30, ...list.map((a) => a.full.length)), 14, 14, 14];
   const lines = [row(['Account', 'QuickBooks', 'RapidBooks', 'Difference'], w), row(['', '(debit +)', '(debit +)', ''], w)];
   let tq = 0;
@@ -224,6 +238,11 @@ function compareTrialBalance(db: DB, data: Uint8Array | string, asOf: string, fy
     if (q !== r) differences.push(`${a.full}: QuickBooks ${money(q)}, RapidBooks ${money(r)}, difference ${money(r - q)}`);
   }
   lines.push(row(['Total', money(tq), money(tr), money(tr - tq)], w));
+  lines.push(
+    allDates
+      ? 'Income and expense accounts compared over all dates, as this QuickBooks report shows them (no Retained Earnings).'
+      : 'Income and expense accounts compared year to date; earlier years are in Retained Earnings.',
+  );
   return { title: `Trial Balance as of ${usDate(asOf)}`, status: differences.length ? 'FAIL' : 'PASS', lines, differences };
 }
 

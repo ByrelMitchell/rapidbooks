@@ -42,8 +42,32 @@ export const JOURNAL_COLUMNS = {
   zip: ['namezip', 'zip'],
   payMeth: ['paymeth', 'paymentmethod', 'paymethod'],
   billingStatus: ['billingstatus'],
+  accountType: ['accounttype'],
 } as const;
 export type JournalField = keyof typeof JOURNAL_COLUMNS;
+
+/**
+ * The Journal's optional Account Type column ("Income", "Other Current Asset"...),
+ * normalised, to RapidBooks account type codes. It tells apart accounts whose last name
+ * is the same (Sales:Tooling, Supplies:tooling) when the Journal shows only that name.
+ */
+export const JOURNAL_ACCOUNT_TYPES: Record<string, string> = {
+  bank: 'BANK',
+  accountsreceivable: 'AR',
+  othercurrentasset: 'OCA',
+  fixedasset: 'FA',
+  otherasset: 'OCA',
+  accountspayable: 'AP',
+  creditcard: 'CC',
+  othercurrentliability: 'OCL',
+  longtermliability: 'LTL',
+  equity: 'EQUITY',
+  income: 'INC',
+  costofgoodssold: 'COGS',
+  expense: 'EXP',
+  otherincome: 'OINC',
+  otherexpense: 'OEXP',
+};
 
 /** A row is the Journal's header row when it has an Account column, an amount column and a Type or Date column. */
 export const JOURNAL_HEADER_REQUIRED: JournalField[][] = [['account'], ['debit', 'credit', 'amount'], ['type', 'date']];

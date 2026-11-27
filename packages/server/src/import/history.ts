@@ -124,6 +124,12 @@ interface ItemInfo {
   purchase_account_id: number | null;
 }
 
+/**
+ * Lookup key of an account or item name: lower case, and the inch mark " written as '
+ * (the IIF list export writes 1' dia bar where the Journal has 1" dia bar).
+ */
+const nameKey = (s: string) => s.toLowerCase().replace(/"/g, "'");
+
 class Lookups {
   accounts = new Map<string, AccountInfo>(); // lower full name
   accountById = new Map<number, AccountInfo>();
@@ -159,8 +165,8 @@ class Lookups {
     };
     for (const i of items) {
       const info = { id: i.id, type: i.type, account_id: i.account_id, purchase_account_id: i.purchase_account_id };
-      this.items.set(ifull(i.id).toLowerCase(), info);
-      const leaf = i.name.toLowerCase();
+      this.items.set(nameKey(ifull(i.id)), info);
+      const leaf = nameKey(i.name);
       this.leafItems.set(leaf, [...(this.leafItems.get(leaf) ?? []), info]);
     }
     for (const t of db.prepare('SELECT id, name, net_days FROM terms').all() as { id: number; name: string; net_days: number }[]) {
@@ -168,10 +174,17 @@ class Lookups {
     }
   }
 
-  addAccount(a: AccountInfo) {
-    this.accounts.set(a.full.toLowerCase(), a);
+  /** Accounts the import had to create; found only when nothing on the lists matches. */
+  created = new Map<string, AccountInfo>();
+
+  addAccount(a: AccountInfo, created = false) {
     this.accountById.set(a.id, a);
-    const leaf = a.full.split(':').pop()!.toLowerCase();
+    if (created) {
+      this.created.set(nameKey(a.full), a);
+      return;
+    }
+    this.accounts.set(nameKey(a.full), a);
+    const leaf = nameKey(a.full.split(':').pop()!);
     this.leafAccounts.set(leaf, [...(this.leafAccounts.get(leaf) ?? []), a]);
   }
 
@@ -180,19 +193,32 @@ class Lookups {
     this.nameById.set(n.id, n);
   }
 
-  findAccount(full: string): AccountInfo | undefined {
-    const k = full.toLowerCase();
+  /**
+   * The account a Journal row names. A last name alone ("tooling") that several accounts
+   * share is narrowed by the row's Account Type, then by the accounts its item posts to.
+   */
+  findAccount(full: string, type = '', hint: (number | null)[] = []): AccountInfo | undefined {
+    const k = nameKey(full);
     const hit = this.accounts.get(k);
-    if (hit) return hit;
-    if (!k.includes(':')) {
-      const leaf = this.leafAccounts.get(k);
-      if (leaf && leaf.length === 1) return leaf[0];
-    }
-    return undefined;
+    if (k.includes(':')) return hit ?? this.created.get(k);
+    // A name without a colon may be a top-level account or the last part of any account:
+    // narrow by the row's Account Type, then the exact capitalisation (the Journal keeps
+    // each account's own: "Swiss" vs "swiss"), then the accounts the row's item posts to.
+    let leaf = this.leafAccounts.get(k) ?? [];
+    const narrow = (keep: (a: AccountInfo) => boolean) => {
+      const n = leaf.filter(keep);
+      if (n.length) leaf = n;
+    };
+    if (leaf.length > 1 && type) narrow((a) => a.type === type);
+    if (leaf.length > 1) narrow((a) => a.full.split(':').pop()!.replace(/"/g, "'") === full.trim().replace(/"/g, "'"));
+    if (leaf.length > 1 && hint.length) narrow((a) => hint.includes(a.id));
+    if (leaf.length === 1) return leaf[0];
+    if (hit && leaf.includes(hit)) return hit; // still several: the top-level one, as written
+    return this.created.get(k);
   }
 
   findItem(full: string): ItemInfo | undefined {
-    const k = full.toLowerCase();
+    const k = nameKey(full);
     const hit = this.items.get(k);
     if (hit) return hit;
     const leaf = this.leafItems.get(k.split(':').pop()!);
@@ -410,7 +436,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
       const head = qb.rows[0].name || qb.rows[0].source;
       vote(head, kindOfType(type));
       for (const r of qb.rows) {
-        const a = L.findAccount(r.account);
+        const a = L.findAccount(r.account, r.accountType);
         if (a?.type === 'AR') vote(r.name, 'customer');
         else if (a?.type === 'AP') vote(r.name, 'vendor');
         else vote(r.name, 'other');
@@ -465,22 +491,25 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
           return amount > 0 ? 'EXP' : 'INC';
       }
     };
-    const accountId = (full: string, type: string, rowIndex: number, amount: number): number => {
-      const hit = L.findAccount(full);
+    const accountId = (r: JournalRow, type: string, rowIndex: number): number => {
+      const full = r.account;
+      const item = r.item ? L.findItem(r.item) : undefined;
+      const hit = L.findAccount(full, r.accountType, item ? [item.account_id, item.purchase_account_id] : []);
       if (hit) return hit.id;
       const segs = full.split(':').map((s) => s.trim());
       let parent: AccountInfo | undefined;
       for (let i = 0; i < segs.length; i++) {
         const f = segs.slice(0, i + 1).join(':');
-        const h = L.accounts.get(f.toLowerCase());
+        const h = L.accounts.get(nameKey(f)) ?? L.created.get(nameKey(f));
         if (h) {
           parent = h;
           continue;
         }
-        const t = (parent?.type as AccountTypeCode | undefined) ?? guessType(full, type, rowIndex, amount);
+        const own = i === segs.length - 1 ? (r.accountType as AccountTypeCode) : undefined;
+        const t = own || ((parent?.type as AccountTypeCode | undefined) ?? guessType(full, type, rowIndex, r.amount));
         const id = createAccount(db, { name: segs[i] || '(blank)', type: t, parent_id: parent?.id ?? null, description: 'Created by the QuickBooks history import', inactive: true });
         parent = { id, type: t, full: f };
-        L.addAccount(parent);
+        L.addAccount(parent, true);
         result.createdAccounts.push(`${f} (${t})`);
         warn(`Account "${f}" is not in the list export (renamed or deleted since?); it was created as an inactive ${t} account. Check its type in the chart of accounts.`);
       }
@@ -493,7 +522,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
     for (const { qb, type, map } of good) {
       const rows = qb.rows;
       const splits: ImportSplit[] = rows.map((r, i) => ({
-        account_id: accountId(r.account, type, i, r.amount),
+        account_id: accountId(r, type, i),
         amount: r.amount,
         name_id: nameId(r.name),
         memo: r.memo,

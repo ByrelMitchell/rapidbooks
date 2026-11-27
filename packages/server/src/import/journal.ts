@@ -1,4 +1,4 @@
-import { ACCOUNT_NUMBER_PREFIX, GRAND_TOTAL, JOURNAL_COLUMNS, JOURNAL_HEADER_REQUIRED, NOT_CLEARED, norm, type JournalField } from './layout';
+import { ACCOUNT_NUMBER_PREFIX, GRAND_TOTAL, JOURNAL_ACCOUNT_TYPES, JOURNAL_COLUMNS, JOURNAL_HEADER_REQUIRED, NOT_CLEARED, norm, type JournalField } from './layout';
 import { decodeText, detectDelimiter, isBlankRow, mapHeader, parseAmount, parseNumber, parseQbDate, tokenize, type TableRow } from './table';
 
 // Reading the QuickBooks Journal report export into transactions and their splits.
@@ -11,6 +11,7 @@ import { decodeText, detectDelimiter, isBlankRow, mapHeader, parseAmount, parseN
 export interface JournalRow {
   line: number;
   account: string; // full colon-separated name, account number removed
+  accountType: string; // RapidBooks type code from the Account Type column, or ''
   amount: number; // cents, debit positive
   name: string;
   memo: string;
@@ -201,6 +202,7 @@ export function parseJournal(data: Uint8Array | string): ParsedJournal {
     t.rows.push({
       line,
       account,
+      accountType: JOURNAL_ACCOUNT_TYPES[norm(get(cells, 'accountType'))] ?? '',
       amount: Number.isNaN(amount) ? 0 : amount,
       name: get(cells, 'name'),
       memo: getText(cells, 'memo'),
