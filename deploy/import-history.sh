@@ -5,6 +5,14 @@
 #   ./deploy/import-history.sh                        exports in data/qb-exports, makes data/trial.db
 #   ./deploy/import-history.sh path/to/qb-export      exports somewhere else
 #   ./deploy/import-history.sh path/to/qb-export data/other.db
+#   sudo ./deploy/import-history.sh --install [path/to/qb-export]
+#
+# --install makes the imported books the ones RapidBooks serves (cutover, docs/IMPORT.md
+# section 7). It imports into a new file next to the served database while RapidBooks
+# keeps running; only if the reconciliation says PASS does it stop RapidBooks (the Docker
+# container, or the rapidbooks service of deploy/install.sh), rename the old database
+# with a date and time, put the new one in its place and start RapidBooks again. If
+# anything differs, nothing is changed and the new file is left for a look.
 #
 # Paths are relative to the RapidBooks folder (the one with packages/ and data/), wherever
 # this is run from. An existing company file at the output path is renamed with a date
@@ -29,10 +37,39 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-EXPORTS="${1:-data/qb-exports}"
-OUT="${2:-data/trial.db}"
-
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+
+INSTALL=0
+POS=()
+for a in "$@"; do
+  case "$a" in
+    --install) INSTALL=1 ;;
+    -*) die "Unknown option: $a" ;;
+    *) POS+=("$a") ;;
+  esac
+done
+EXPORTS="${POS[0]:-data/qb-exports}"
+OUT="${POS[1]:-data/trial.db}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+# --install: where the served database is, and how RapidBooks runs here.
+if [ "$INSTALL" -eq 1 ]; then
+  [ "${#POS[@]}" -le 1 ] || die "--install takes only the export folder; it writes the served database."
+  [ "$(id -u)" -eq 0 ] || die "--install needs sudo: sudo $0 $*"
+  if command -v docker >/dev/null 2>&1 && docker container inspect rapidbooks >/dev/null 2>&1; then
+    MODE=docker
+    LIVE=/var/lib/rapidbooks/rapidbooks.db
+    LIVE_OWNER=1000:1000 # the "node" user of the image (deploy/docker-install.sh)
+  elif systemctl cat rapidbooks.service >/dev/null 2>&1; then
+    MODE=service
+    LIVE="$(sed -n 's/^RAPIDBOOKS_DB=//p' /etc/rapidbooks.env 2>/dev/null | tail -n 1)"
+    LIVE="${LIVE:-/var/lib/rapidbooks/rapidbooks.db}"
+    LIVE_OWNER=rapidbooks:rapidbooks
+  else
+    die "RapidBooks is not installed here (no rapidbooks Docker container or service). Install it first: sudo ./deploy/docker-install.sh"
+  fi
+  OUT="$(dirname "$LIVE")/rapidbooks.import-$STAMP.db"
+fi
 [ -d "$EXPORTS" ] || die "No export folder $EXPORTS. Give it as the first argument."
 EXPORTS="$(cd "$EXPORTS" && pwd)"
 mkdir -p "$(dirname "$OUT")"
@@ -106,11 +143,11 @@ if node_ok; then
   status=$?
 elif command -v docker >/dev/null 2>&1 && docker image inspect rapidbooks:latest >/dev/null 2>&1; then
   echo "(running in the RapidBooks Docker image)"
-  # Files made inside belong to whoever runs this (the sudo caller, under sudo).
-  uid="${SUDO_UID:-$(id -u)}"
-  gid="${SUDO_GID:-$(id -g)}"
+  # Run as the owner of the output folder, so the files made there are its own.
+  owner="$(stat -c '%u:%g' "$OUT_DIR")"
+  [ "$owner" != "0:0" ] || owner="${SUDO_UID:-$(id -u)}:${SUDO_GID:-$(id -g)}"
   mapfile -t A < <(args /exports /out)
-  docker run --rm --user "$uid:$gid" -e HOME=/tmp \
+  docker run --rm --user "$owner" -e HOME=/tmp \
     -v "$EXPORTS:/exports:ro" -v "$OUT_DIR:/out" \
     -v "$ROOT/packages/server/src:/app/packages/server/src:ro" \
     -v "$ROOT/packages/shared/src:/app/packages/shared/src:ro" \
@@ -123,6 +160,53 @@ else
 fi
 set -e
 echo
-[ "$status" -eq 0 ] && echo "OVERALL: PASS. Company file: $OUT_DIR/$OUT_NAME" \
-  || echo "Something differs or went wrong (exit $status). The reconciliation: $OUT_DIR/$REPORT_NAME"
-exit "$status"
+if [ "$status" -ne 0 ]; then
+  echo "Something differs or went wrong (exit $status). The reconciliation: $OUT_DIR/$REPORT_NAME"
+  [ "$INSTALL" -eq 1 ] && echo "Nothing was installed: RapidBooks still serves $LIVE as before. The new file is $OUT_DIR/$OUT_NAME."
+  exit "$status"
+fi
+if [ "$INSTALL" -eq 0 ]; then
+  echo "OVERALL: PASS. Company file: $OUT_DIR/$OUT_NAME"
+  exit 0
+fi
+
+# --- Install: swap the new books in for the served ones.
+NEW="$OUT_DIR/$OUT_NAME"
+OLD="$LIVE.before-import-$STAMP"
+move_db() { # move a database with its -wal and -shm files
+  mv "$1" "$2"
+  for s in -wal -shm; do if [ -e "$1$s" ]; then mv "$1$s" "$2$s"; fi; done
+}
+echo "OVERALL: PASS. Installing the imported books as $LIVE"
+echo "Stopping RapidBooks"
+if [ "$MODE" = docker ]; then docker stop -t 60 rapidbooks >/dev/null; else systemctl stop rapidbooks.service; fi
+if [ -e "$LIVE" ]; then
+  move_db "$LIVE" "$OLD"
+  echo "The previous books were renamed to $OLD"
+fi
+move_db "$NEW" "$LIVE"
+chown "$LIVE_OWNER" "$LIVE"
+chmod 0640 "$LIVE"
+mv "$OUT_DIR/$REPORT_NAME" "$OUT_DIR/import-$STAMP-reconciliation.txt"
+echo "Starting RapidBooks"
+if [ "$MODE" = docker ]; then docker start rapidbooks >/dev/null; else systemctl start rapidbooks.service; fi
+
+healthy() {
+  if [ "$MODE" = docker ]; then
+    curl -fsS http://127.0.0.1:3001/api/health >/dev/null 2>&1
+  else
+    /usr/local/bin/rapidbooks-admin health >/dev/null 2>&1
+  fi
+}
+for _ in $(seq 1 60); do healthy && break; sleep 1; done
+if healthy; then
+  echo
+  echo "Done. RapidBooks now serves the imported books. The reconciliation is"
+  echo "$OUT_DIR/import-$STAMP-reconciliation.txt; keep it with the QuickBooks backup."
+  echo "To go back: stop RapidBooks, then move $OLD back to $LIVE."
+  exit 0
+fi
+echo "ERROR: RapidBooks did not answer after the swap." >&2
+if [ "$MODE" = docker ]; then echo "Its log: sudo docker logs --tail 50 rapidbooks" >&2; else echo "Its log: journalctl -u rapidbooks -n 50" >&2; fi
+echo "To go back: stop RapidBooks, then move $OLD back to $LIVE (and its -wal/-shm files, if any)." >&2
+exit 1

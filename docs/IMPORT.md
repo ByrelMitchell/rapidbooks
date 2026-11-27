@@ -286,17 +286,25 @@ registers, a few reports. When you are done, delete `data/trial.db` (it is only 
    QuickBooks**.
 2. Make a QuickBooks backup (File > Back Up) and keep it.
 3. Do all the exports of section 1 with *DATE* = today.
-4. On the RapidBooks computer: **stop the RapidBooks server** (`sudo systemctl stop
-   rapidbooks`, or close its window), so nobody uses the old company file.
-5. Run the import of section 3 with `--out data/rapidbooks.db --force`. The old file is
-   renamed, not deleted.
-6. Read the reconciliation. It must say **OVERALL: PASS** (or only differences you have
-   understood and noted, see 5). If not, do not switch: start the server on the old
-   file again (rename it back) and keep using QuickBooks until it is sorted out.
-7. Print or save `reconciliation.txt` with the QuickBooks backup.
-8. Start the RapidBooks server. From now on she works in RapidBooks only.
-9. Re-enter open purchase orders by hand (section 1.7).
-10. Keep the old computer, switched off, for a few months before retiring it.
+4. Put the exports in `data/qb-exports` on the RapidBooks computer (replacing the trial
+   ones) and run
+
+   ```
+   git pull
+   sudo ./deploy/import-history.sh --install
+   ```
+
+   It imports into a new file while RapidBooks keeps running and prints the
+   reconciliation. Only if it says **OVERALL: PASS** does it stop RapidBooks, rename the
+   old company file (with the date and time; never deleted), put the imported one in its
+   place and start RapidBooks again. If anything differs, nothing changes: keep using
+   QuickBooks until it is sorted out (see 5), then run it again.
+5. Print or save the reconciliation it names (`import-<date>-reconciliation.txt` in the
+   data folder) with the QuickBooks backup.
+6. From now on she works in RapidBooks only. To go back, the script says which file to
+   rename back.
+7. Re-enter open purchase orders by hand (section 1.7).
+8. Keep the old computer, switched off, for a few months before retiring it.
 
 ---
 
