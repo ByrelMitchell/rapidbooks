@@ -70,7 +70,11 @@ else
   fi
 fi
 
-say "Building the RapidBooks image (the first time takes a few minutes)"
+say "Building the RapidBooks image (a few minutes)"
+OLD_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null || true)"
+# Leftovers of earlier builds first, so a nearly full disk still has room for this one
+# (the image the running container uses is kept: it is not dangling).
+docker image prune -f --filter label=app=rapidbooks >/dev/null 2>&1 || true
 docker build -t "$IMAGE" "$SRC_DIR"
 
 say "Data folder $DATA_DIR"
@@ -119,6 +123,18 @@ curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 || {
   docker logs --tail 30 "$NAME" >&2 || true
   die "RapidBooks did not answer on port $PORT. The log is above (more: sudo docker logs $NAME)."
 }
+
+# Every build leaves the previous image and its build stage behind, hundreds of MB
+# each, until the disk fills. Remove them now that the new image is the one running.
+say "Removing old RapidBooks images"
+docker image prune -f --filter label=app=rapidbooks | tail -n 1 || true
+# The image of the previous install, if it was built before the label existed.
+NEW_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$IMAGE")"
+if [ -n "$OLD_IMAGE_ID" ] && [ "$OLD_IMAGE_ID" != "$NEW_IMAGE_ID" ]; then
+  docker rmi "$OLD_IMAGE_ID" >/dev/null 2>&1 || true
+fi
+# BuildKit's cache (newer Docker), only a cache: the next build just takes longer.
+docker builder prune -f >/dev/null 2>&1 || true
 
 say "Installing the RapidBooks menu entry"
 install -m 0755 "$SRC_DIR/deploy/rapidbooks-launch.sh" /usr/local/bin/rapidbooks-launch

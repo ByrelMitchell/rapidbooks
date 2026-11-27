@@ -41,6 +41,21 @@ sudo ./deploy/docker-install.sh          # same options as the first time
 
 It stops the container cleanly, copies the database to
 `/var/lib/rapidbooks/backups/before-update-<date>.db`, rebuilds and starts again.
+Once the new container answers, it removes the previous image and the build leftovers
+(otherwise hundreds of MB per update), so each rebuild starts from scratch and takes a few
+minutes. The container's log is capped at 30 MB.
+
+If the disk filled up from installs made before that cleanup existed, free it once and
+update again:
+
+```
+sudo docker rm -f rapidbooks
+sudo docker system prune -a -f       # every image not in use; /var/lib/rapidbooks is untouched
+sudo ./deploy/docker-install.sh      # same options as the first time
+```
+
+(Removing the container first skips the script's `before-update` copy; copy
+`rapidbooks.db` into `backups/` by hand before that if you want one.)
 
 ## Where things are
 

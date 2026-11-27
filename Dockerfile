@@ -6,6 +6,9 @@
 # (a folder on the host), so the image can be rebuilt and replaced freely.
 
 FROM node:24-bookworm-slim AS build
+# Both stages carry this label so deploy/docker-install.sh can remove its own leftovers
+# (the build stage and the image of the previous install) and nothing else.
+LABEL app=rapidbooks
 # Compilers, in case the SQLite driver has no prebuilt binary for this Node.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
@@ -19,6 +22,7 @@ RUN npm ci --no-audit --no-fund \
  && if [ -f packages/web/dist/index.html ]; then echo "Using the prebuilt web app"; else npm run build; fi
 
 FROM node:24-bookworm-slim
+LABEL app=rapidbooks
 WORKDIR /app
 COPY --from=build --chown=node:node /app /app
 ENV NODE_ENV=production \
