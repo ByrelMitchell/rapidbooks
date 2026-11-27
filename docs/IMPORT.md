@@ -275,8 +275,23 @@ account. Nothing is lost.
 
 ## 6. After a successful trial run
 
-Start RapidBooks against the trial file and look around: open some invoices, the
-registers, a few reports. When you are done, delete `data/trial.db` (it is only a test).
+To try RapidBooks on her real books before cutover, install the import:
+
+```
+sudo ./deploy/import-history.sh --install
+```
+
+RapidBooks then serves the imported books instead of the demo company, and she can look
+around and practise: open some invoices, the registers, a few reports, enter things.
+Two rules until cutover:
+
+- **QuickBooks stays the real books.** Keep entering everything there; what she enters
+  in RapidBooks is practice.
+- **Practice is not kept.** At cutover `--install` is run again with fresh exports
+  (section 7), and the practice books are set aside under a dated name, not carried
+  over.
+
+The trial run's own `data/trial.db` is only a test file; delete it when you are done.
 
 ---
 
@@ -294,6 +309,7 @@ registers, a few reports. When you are done, delete `data/trial.db` (it is only 
    sudo ./deploy/import-history.sh --install
    ```
 
+   This replaces whatever RapidBooks serves, including any practice books from section 6.
    It imports into a new file while RapidBooks keeps running and prints the
    reconciliation. Only if it says **OVERALL: PASS** does it stop RapidBooks, rename the
    old company file (with the date and time; never deleted), put the imported one in its

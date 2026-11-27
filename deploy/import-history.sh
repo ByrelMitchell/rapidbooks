@@ -7,8 +7,10 @@
 #   ./deploy/import-history.sh path/to/qb-export data/other.db
 #   sudo ./deploy/import-history.sh --install [path/to/qb-export]
 #
-# --install makes the imported books the ones RapidBooks serves (cutover, docs/IMPORT.md
-# section 7). It imports into a new file next to the served database while RapidBooks
+# --install makes the imported books the ones RapidBooks serves. Fine to do before
+# cutover, to try RapidBooks on her real books; then run it again at cutover with fresh
+# exports (docs/IMPORT.md sections 6 and 7): anything entered in the meantime is set
+# aside with the old file, not carried over. It imports into a new file next to the served database while RapidBooks
 # keeps running; only if the reconciliation says PASS does it stop RapidBooks (the Docker
 # container, or the rapidbooks service of deploy/install.sh), rename the old database
 # with a date and time, put the new one in its place and start RapidBooks again. If
