@@ -316,6 +316,23 @@ describe('payments', () => {
     expect(listNames(db).find((n) => n.id === acme)!.balance).toBe(2800);
   });
 
+  it('writes off an invoice with a payment of 0.00 that only takes a discount, kept out of deposits', () => {
+    const inv = simpleInvoice(10000, { num: '1001' });
+    expect(() => payment(0, [{ txn_id: inv, amount: 0 }])).toThrow(/amount of the payment/);
+    const { id } = payment(0, [{ txn_id: inv, amount: 0, discount: 10000, discount_account_id: discAcct }]);
+    expect(splitsOf(id)).toEqual([
+      [uf, 0, acme],
+      [ar, 0, acme],
+      [discAcct, 10000, acme],
+      [ar, -10000, acme],
+    ]);
+    expect(trialBalance()).toBe(0);
+    expect(doc(inv).open_balance).toBe(0);
+    expect(doc(id)).toMatchObject({ total: 0, unapplied: 0 });
+    expect(listNames(db).find((n) => n.id === acme)!.balance).toBe(0);
+    expect(listPendingPayments(db)).toEqual([]);
+  });
+
   it('refuses over-application, wrong customers, and missing discount accounts', () => {
     const inv = simpleInvoice(10000, { num: '1001' });
     expect(() => payment(5000, [{ txn_id: inv, amount: 6000 }])).toThrow(/You applied \$60.00, but the payment is only \$50.00/);

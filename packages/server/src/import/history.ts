@@ -432,7 +432,7 @@ export function importHistory(db: DB, input: HistoryInput): HistoryResult {
     // --- Which transactions can be imported at all.
     const good: { qb: JournalTxn; type: string; map: (typeof TYPE_MAP)[string] | undefined }[] = [];
     for (const qb of journal.txns) {
-      const map = TYPE_MAP[norm(qb.qbType)];
+      const map = typeMapOf(qb);
       const type = map?.type ?? (qb.qbType || 'Journal');
       const c = countOf(qb.qbType, map?.type ?? '(journal-style)');
       c.read++;
@@ -751,6 +751,13 @@ function fillHeader(p: Plan, L: Lookups, uf: number) {
     case 'PAYMENT': {
       const ar = firstOfType('AR');
       if (ar >= 0) h.ar_account_id = p.splits[ar].account_id;
+      if (isWriteOff(p.qb)) {
+        // Receive Payments of 0.00 with only a discount: nothing is deposited.
+        h.account_id = uf;
+        h.total = 0;
+        h.ref_no = p.qb.num;
+        break;
+      }
       const dep = p.splits.findIndex((s) => s.amount > 0 && L.accountById.get(s.account_id)?.type !== 'AR');
       if (dep >= 0) {
         h.account_id = p.splits[dep].account_id;
@@ -827,6 +834,19 @@ function fillHeader(p: Plan, L: Lookups, uf: number) {
       p.lockCategory = `${CATEGORY.noForm}: ${p.qbType}`;
       p.lockNote = `QuickBooks type "${p.qbType}" has no form in RapidBooks, so it was imported as posted`;
   }
+}
+
+/**
+ * QuickBooks writes a Receive Payments of 0.00 that only takes a discount (her way to write
+ * off an invoice) as a transaction of type "Discount" crediting A/R. It is a RapidBooks
+ * payment of 0.00 with that discount.
+ */
+function isWriteOff(qb: JournalTxn): boolean {
+  return norm(qb.qbType) === 'discount' && qb.rows[0]?.accountType === 'AR' && qb.rows[0].amount < 0;
+}
+
+function typeMapOf(qb: JournalTxn): (typeof TYPE_MAP)[string] | undefined {
+  return isWriteOff(qb) ? { type: 'PAYMENT' } : TYPE_MAP[norm(qb.qbType)];
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,14 +1048,13 @@ const DOC_LABEL: Record<string, string> = {
   BILL: 'bill',
   BILLCREDIT: 'bill credit',
   BILLPMT: 'bill payment',
-  Discount: 'discount',
   CHECK: 'refund check',
 };
 
 function describe(r: Role, L: Lookups): string {
   const p = r.plan;
   const [y, m, d] = p.date.split('-');
-  return `${DOC_LABEL[p.type] ?? p.type}${p.header.num ? ` ${p.header.num}` : ''} of ${m}/${d}/${y} (${L.nameById.get(r.nameId)?.full ?? ''}, ${money(r.amount)})`;
+  return `${isWriteOff(p.qb) ? 'discount' : (DOC_LABEL[p.type] ?? p.type)}${p.header.num ? ` ${p.header.num}` : ''} of ${m}/${d}/${y} (${L.nameById.get(r.nameId)?.full ?? ''}, ${money(r.amount)})`;
 }
 
 /** Link each deposit's Undeposited Funds rows to earlier payments of the same customer and amount, oldest first. */

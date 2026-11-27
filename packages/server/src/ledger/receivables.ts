@@ -169,7 +169,7 @@ export function listPendingPayments(db: DB, depositId: number | null = null): Pe
     .prepare(
       `SELECT t.id, t.date, t.ref_no, t.pay_method, t.name_id, t.memo, t.total AS amount, d.from_txn AS deposit
          FROM txns t LEFT JOIN links d ON d.kind = 'deposit' AND d.to_txn = t.id
-        WHERE t.type = 'PAYMENT' AND t.account_id = ? AND (d.from_txn IS NULL OR d.from_txn = ?)
+        WHERE t.type = 'PAYMENT' AND t.account_id = ? AND t.total <> 0 AND (d.from_txn IS NULL OR d.from_txn = ?)
         ORDER BY t.date, t.id`,
     )
     .all(uf, depositId) as (Omit<PendingPayment, 'full_name' | 'in_this_deposit'> & { deposit: number | null })[];

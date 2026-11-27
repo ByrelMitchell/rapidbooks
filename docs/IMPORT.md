@@ -442,9 +442,11 @@ so it can be adjusted quickly if a later export differs. The assumptions:
     "General Journal", "Check", "Liability Check" (imported as a check), "Bill",
     "Credit" (vendor credit), "Bill Pmt -Check", "Bill Pmt -CCard", "Transfer",
     "Paycheck", "Finance Chrg"/"Finance Charge" (an invoice). Any other type is imported
-    as posted under its own name, locked. "Discount" (a discount or write-off entered in
-    Receive Payments or Pay Bills without a payment: bad debt, a donation) is such a type,
-    but is applied to the customer's invoices or vendor's bills like a credit. A check
+    as posted under its own name, locked. "Discount" is a discount or write-off entered in
+    Receive Payments or Pay Bills without a payment (bad debt, a donation). On the
+    customer side it becomes a Receive Payments of 0.00 whose discount goes to the
+    write-off account, editable like any payment; on the vendor side it stays a locked
+    "Discount". Either way it is applied to the invoices or bills like a credit. A check
     with an Accounts Receivable line is a refund to the customer: payments and credits
     are applied to it like an invoice (the payment is then locked, as the Receive
     Payments form applies only to invoices).

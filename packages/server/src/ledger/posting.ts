@@ -355,7 +355,10 @@ function buildSalesDoc(db: DB, input: InvoiceInput | CreditMemoInput, old: Old):
 
 function buildPayment(db: DB, input: PaymentInput, old: Old): Built {
   const cust = requireCustomer(db, input.name_id);
-  if (input.amount <= 0) throw new AppError(400, 'Enter the amount of the payment.');
+  // A payment of 0.00 is allowed when it only takes discounts (QuickBooks' way to write off an invoice).
+  if (input.amount < 0 || (input.amount === 0 && !input.applications.some((a) => a.discount > 0))) {
+    throw new AppError(400, 'Enter the amount of the payment.');
+  }
   const depositTo = input.account_id ?? systemAccount(db, 'UNDEPOSITED');
   const dep = accountRow(db, depositTo);
   if (!dep) throw new AppError(400, 'The account to deposit to no longer exists.');

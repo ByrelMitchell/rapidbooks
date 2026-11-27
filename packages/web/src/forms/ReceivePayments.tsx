@@ -319,7 +319,8 @@ export function ReceivePayments({ winId, props }: WinProps) {
       };
       if (f.customerId === null) return fail('Choose the customer the payment is received from.');
       const amount = f.amount ?? 0;
-      if (amount <= 0) return fail('Enter the amount of the payment.');
+      // 0.00 with only discounts is a write-off, as QuickBooks allows.
+      if (amount < 0 || (amount === 0 && !f.rows.some((r) => r.discount > 0))) return fail('Enter the amount of the payment.');
       const applied = totalApplied(f.rows);
       if (applied > amount) {
         return fail(`You applied ${formatMoney(applied)}, but the payment is only ${formatMoney(amount)}. Apply less, or raise the payment amount.`);

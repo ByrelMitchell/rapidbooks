@@ -441,8 +441,33 @@ describe('QuickBooks 2013 exports: last account names only, flat reports', () =>
     // invoices and to the refund check.
     expect(openDocs(db, 'AR', '2025-12-31')).toEqual([]);
     const applied = db.prepare(`SELECT f.type AS f, t.type AS t FROM links l JOIN txns f ON f.id = l.from_txn JOIN txns t ON t.id = l.to_txn WHERE l.kind = 'apply'`).all() as { f: string; t: string }[];
-    expect(new Set(applied.map((a) => a.f))).toEqual(new Set(['Discount', 'PAYMENT']));
+    expect(new Set(applied.map((a) => a.f))).toEqual(new Set(['PAYMENT']));
+    // The write-off is a Receive Payments of 0.00 whose discount goes to its account.
+    const w = txn('4');
+    expect(w).toMatchObject({ type: 'PAYMENT', total: 0, qb_type: 'Discount' });
+    const disc = db
+      .prepare("SELECT SUM(amount) AS amount, SUM(discount) AS discount, MAX(discount_account_id) AS acct FROM links WHERE kind = 'apply' AND from_txn = ?")
+      .get(w.id) as { amount: number; discount: number; acct: number };
+    expect(disc).toEqual({ amount: 0, discount: 10000, acct: acct('Supplies:tooling') });
     expect(applied.map((a) => a.t)).toContain('CHECK');
+  });
+
+  it('makes a Discount write-off of an invoice an editable Receive Payments of 0.00', () => {
+    const j = [
+      '"Trans #","Type","Date","Num","Name","Memo","Account","Debit","Credit","Account Type"',
+      '"1","Invoice","01/10/2025","1","Acme",,"Accounts Receivable",100.00,"","Accounts Receivable"',
+      ',,,,"Acme",,"tooling","",100.00,"Income"',
+      ',,,,,,,100.00,100.00,',
+      '"2","Discount","02/01/2025",,"Acme",,"Accounts Receivable","",100.00,"Accounts Receivable"',
+      ',,,,"Acme",,"tooling",100.00,"","Expense"',
+      ',,,,,,,100.00,100.00,',
+      '"TOTAL",,,,,,,200.00,200.00,',
+    ].join('\r\n');
+    const h = importHistory(db, { iif: Buffer.from(lists), journal: j });
+    expect(h.locked).toEqual([]);
+    expect(h.byType.find((c) => c.qbType === 'Discount')).toMatchObject({ rbType: 'PAYMENT', imported: 1, locked: 0 });
+    expect(txn('2')).toMatchObject({ type: 'PAYMENT', total: 0, import_locked: false, account_id: acct('Undeposited Funds') });
+    expect(openDocs(db, 'AR', '2025-12-31')).toEqual([]);
   });
 
   it('decides accounts sharing a name from a Profit & Loss by month', () => {
