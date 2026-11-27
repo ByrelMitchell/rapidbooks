@@ -148,6 +148,23 @@ describe('making a backup', () => {
     expect(s.warning).toBeNull();
   });
 
+  it('does not report a failed backup before one was tried', () => {
+    // The default folder is made by the first backup: only "not backed up yet".
+    const fresh = new BackupService({ db, dir: join(dir, 'not-yet'), time: null, log: quiet });
+    let s = fresh.status();
+    expect(s.lastError).toBeNull();
+    expect(s.folderError).toBeNull();
+    expect(s.warning).toBe('RapidBooks has not been backed up yet.');
+
+    // A configured mount that is not connected is a problem, but not a failed backup.
+    const mount = new BackupService({ db, dir: join(dir, 'mnt', 'gone'), dirMustExist: true, time: null, log: quiet });
+    s = mount.status();
+    expect(s.lastError).toBeNull();
+    expect(s.folderError).toMatch(/does not exist.*network drive/);
+    expect(s.warning).toMatch(/^RapidBooks cannot back up: /);
+    expect(s.warning).not.toMatch(/failed/);
+  });
+
   it('warns when the last backup is more than 3 days old', async () => {
     let now = new Date(2026, 10, 1, 2);
     const svc = new BackupService({ db, dir: join(dir, 'backups'), time: null, log: quiet, now: () => now });

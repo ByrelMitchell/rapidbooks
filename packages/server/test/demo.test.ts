@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { openDb, type DB } from '../src/db';
 import { buildDemo, type DemoSummary } from '../src/demo/build';
+import { poReceived } from '../src/ledger/purchasing';
 import { REPORTS, runReport } from '../src/reports/registry';
 
 const THROUGH = '2026-11-11';
@@ -31,6 +32,19 @@ describe('the demo company', () => {
     expect(bal('AP')).toBeLessThan(0);
     const checking = one<{ b: number }>("SELECT SUM(s.amount) AS b FROM splits s JOIN accounts a ON a.id = s.account_id WHERE a.name LIKE 'Checking%'").b;
     expect(checking).toBeGreaterThan(0);
+  });
+
+  it('receives purchase orders line by line, leaving a partly received one open', () => {
+    const pos = db.prepare("SELECT id, closed FROM txns WHERE type = 'PURCHORD'").all() as { id: number; closed: number }[];
+    const got = pos.map((p) => ({ ...p, r: poReceived(db, p.id) }));
+    // Every bill line from a P.O. points at the P.O. line it receives.
+    expect(one<{ n: number }>('SELECT COUNT(*) AS n FROM lines WHERE po_txn_id IS NOT NULL').n).toBeGreaterThan(0);
+    // Short shipments filled later by a second bill against the same P.O.
+    expect(one<{ n: number }>("SELECT COUNT(*) AS n FROM (SELECT to_txn FROM links WHERE kind = 'po' GROUP BY to_txn HAVING COUNT(*) > 1)").n).toBeGreaterThan(0);
+    const partly = got.filter((p) => p.r.amount > 0 && !p.r.full);
+    expect(partly.length).toBeGreaterThan(0);
+    for (const p of partly) expect(p.closed).toBe(0);
+    for (const p of got.filter((g) => g.r.full)) expect(p.closed).toBe(1);
   });
 
   it('is the same file every time for the same date', () => {

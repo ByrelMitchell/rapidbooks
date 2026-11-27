@@ -32,7 +32,7 @@ import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
-import { handOffLocked, openWindow } from './openTxn';
+import { handOffLocked, openWindow, confirmDeleteTxn } from './openTxn';
 import { docLabel, openPdf } from './salesDoc';
 import { Ribbon, RibbonBig, RibbonCheck, RibbonFind, RibbonGroup, RibbonSmall, RibbonStack } from './Ribbon';
 import './sales.css';
@@ -361,6 +361,21 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
     }
   };
 
+  /** After the first save of a credit memo: what to do with the credit, as QuickBooks asks. */
+  const askUseCredit = async (): Promise<'refund' | 'apply' | null> => {
+    if (isInvoice || (docRef.current?.unapplied ?? 0) <= 0) return null;
+    const i = await desk.messageBox(
+      'This credit memo has a remaining balance which you may use. What would you like to do with this credit?',
+      {
+        title: 'Available Credit',
+        icon: 'question',
+        buttons: ['&Retain as an available credit', 'Give a &refund', '&Apply to an invoice'],
+        cancelButton: 0,
+      },
+    );
+    return i === 1 ? 'refund' : i === 2 ? 'apply' : null;
+  };
+
   const save = async (mode: 'stay' | 'close' | 'new') => {
     if (busy.current || loading) return;
     busy.current = true;
@@ -375,12 +390,15 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
       const cust = formRef.current.customerId;
       let applyFor: number | null = null;
       if (saved && wasNew && id !== null && cust !== null && (await offerCredits(cust))) applyFor = id;
+      const useCredit = saved && wasNew && id !== null ? await askUseCredit() : null;
       if (mode === 'close') desk.close(winId);
       else if (mode === 'new') {
         await startNew();
         focusCustomer();
       } else refocus(field);
-      if (applyFor !== null) desk.open('applycredits', { invoiceId: applyFor });
+      if (applyFor !== null) desk.open('applycredits', { invoiceId: applyFor, autoApply: true });
+      if (useCredit === 'refund' && id !== null) desk.open('refund', { id: null, creditId: id });
+      if (useCredit === 'apply' && id !== null) desk.open('applycredit', { creditId: id });
     } finally {
       busy.current = false;
     }
@@ -460,7 +478,7 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);
@@ -519,6 +537,17 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
   const receivePayments = () => {
     const cust = formRef.current.customerId ?? docRef.current?.name_id ?? null;
     openWindow(desk, 'payment', cust !== null ? { id: null, customerId: cust } : { id: null }, 'Receive Payments');
+  };
+
+  /** Credit memo ribbon > Use credit to: Give Refund (Issue a Refund) or Apply to Invoice. */
+  const creditLeft = !isInvoice && txnId !== null ? (doc?.unapplied ?? 0) : 0;
+  const giveRefund = () => {
+    const id = txnIdRef.current;
+    if (id !== null && !isInvoice) desk.open('refund', { id: null, creditId: id });
+  };
+  const applyToInvoice = () => {
+    const id = txnIdRef.current;
+    if (id !== null && !isInvoice) desk.open('applycredit', { creditId: id });
   };
 
   /** Ribbon > Refund/Credit: a new credit memo for this customer. */
@@ -651,6 +680,15 @@ export function SalesForm({ winId, props, type }: WinProps & { type: DocType }) 
           <RibbonBig icon="payments" label={'Receive\nPayments'} keys="Alt+M" disabled={dis || customerId === null} onClick={receivePayments} />
           <RibbonStack>
             <RibbonSmall icon="refund" label="Refund/Credit" disabled={dis || customerId === null} onClick={refundCredit} />
+          </RibbonStack>
+        </RibbonGroup>
+      )}
+      {!isInvoice && (
+        <RibbonGroup>
+          <RibbonStack>
+            <span className="rb-caption">Use credit to</span>
+            <RibbonSmall icon="refund" label="Give Refund" disabled={dis || creditLeft <= 0} onClick={giveRefund} />
+            <RibbonSmall icon="credits" label="Apply to Invoice" disabled={dis || creditLeft <= 0} onClick={applyToInvoice} />
           </RibbonStack>
         </RibbonGroup>
       )}

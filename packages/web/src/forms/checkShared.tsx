@@ -37,12 +37,20 @@ export function EndingBalance({ accounts, id }: { accounts: Account[] | undefine
   );
 }
 
-/** The address block QuickBooks puts on a check: the payee's printed name, then the address. */
+/**
+ * The address block QuickBooks puts on a check: the payee's printed name, then the address.
+ * Most addresses (all imported from QuickBooks) already start with a name line (the payee's
+ * name, Print As or company); that address is used as it is, so the name is not printed twice.
+ */
 export function payeeAddress(n: Name | undefined): string {
   if (!n) return '';
   const name = n.print_as.trim() || n.full_name;
   const addr = n.bill_addr.trim();
-  return addr ? `${name}\n${addr}` : name;
+  if (!addr) return name;
+  const first = addr.split('\n')[0].trim().toLowerCase();
+  const person = [n.first_name, n.middle_init, n.last_name].map((s) => s.trim()).filter((s) => s !== '').join(' ');
+  const names = [name, n.name, n.full_name, n.print_as, n.company, person].map((s) => s.trim().toLowerCase()).filter((s) => s !== '');
+  return names.includes(first) ? addr : `${name}\n${addr}`;
 }
 
 const PURCHASABLE = new Set(['SERVICE', 'PART', 'OTHER_CHARGE']);

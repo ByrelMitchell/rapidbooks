@@ -6,7 +6,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { firstBankId, naturalBalance } from './checkShared';
@@ -212,7 +212,7 @@ export function TransferFunds({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);

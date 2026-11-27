@@ -139,6 +139,17 @@ export function PayBills({ winId }: WinProps) {
     rootRef.current?.querySelector<HTMLElement>(`[data-row="${r}"][data-col="pay"]`)?.focus();
   });
 
+  /**
+   * Back to a bill's Amt. To Pay after Set Discount / Set Credits. Not through focusReq: a
+   * cancelled box changes nothing, so no render would come to use it, and the stale request
+   * would later pull the highlight back to this bill when she clicks another one.
+   */
+  const focusPayNow = (i: number) => {
+    focusReq.current = null;
+    setHighlight(i);
+    requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(`[data-row="${i}"][data-col="pay"]`)?.focus());
+  };
+
   const edit = (change: (f: Form) => Form) => {
     setError(null);
     setForm(change);
@@ -188,7 +199,7 @@ export function PayBills({ winId }: WinProps) {
       payDate: formRef.current.payDate,
     });
     if (res) editRow(i, (x) => (x.id === r.id ? setDiscount(x, res.discount, res.accountId) : x));
-    focusReq.current = i;
+    focusPayNow(i);
   };
 
   const openCredits = async () => {
@@ -209,7 +220,7 @@ export function PayBills({ winId }: WinProps) {
       elsewhere: [...creditUseElsewhere(formRef.current.rows, r.id).entries()],
     });
     if (res) editRow(i, (x) => (x.id === r.id ? setCredits(x, res) : x));
-    focusReq.current = i;
+    focusPayNow(i);
   };
 
   const isDirty = () => formRef.current.rows.some(isSelected);
@@ -440,8 +451,8 @@ export function PayBills({ winId }: WinProps) {
                   if (!shown(r)) return null;
                   const cr = creditsUsed(r);
                   return (
-                    <tr key={r.id} className="pb13-row" onFocus={() => setHighlight(i)} onMouseDown={() => setHi(i)}>
-                      <td className="al-center rcv-check" onClick={() => editRow(i, toggle)}>
+                    <tr key={r.id} className="pb13-row" onFocus={() => setHighlight(i)} onMouseDown={() => setHighlight(i)}>
+                      <td className="al-center rcv-check" onClick={() => { editRow(i, toggle); focusPayNow(i); }}>
                         {isSelected(r) ? '✓' : ''}
                       </td>
                       <td className="cell-text">{formatUsDate(r.bill.due_date)}</td>

@@ -16,7 +16,7 @@ import { DateField } from '../controls/DateField';
 import { ListView, type Column } from '../controls/ListView';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { adjacentTxn, anyNameQuickFill, PayMethodField } from './receivablesShared';
@@ -344,7 +344,7 @@ export function MakeDeposits({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     try {
       await api.del(`/api/txns/${id}`);
       desk.setStatus('Deposit deleted. Its payments are back in Undeposited Funds.');

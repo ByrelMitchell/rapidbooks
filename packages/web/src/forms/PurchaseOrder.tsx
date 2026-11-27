@@ -6,7 +6,7 @@ import { DateField } from '../controls/DateField';
 import { itemMap, LineGrid, linesForCompare, linesTotal, padLines, type GridLine, type LineGridHandle } from '../controls/LineGrid';
 import { nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { companyShipTo, gridFromItemLines, isPurchasable, itemLinesToInput, nameOptions, purchLabel, vendorAddress } from './purchaseShared';
@@ -320,7 +320,7 @@ export function PurchaseOrder({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);
@@ -397,6 +397,13 @@ export function PurchaseOrder({ winId, props }: WinProps) {
   const customerOptions = useMemo(() => nameOptions(customers, form.lines.map((l) => l.nameId)), [customers, form.lines]);
   const total = linesTotal(form.lines, imap);
   const received = doc?.bill_ids.length ?? 0;
+  // What bills have received of each item line, as saved (QuickBooks' Rcv'd column).
+  const rcvd = (doc?.items ?? []).filter((l) => l.item_id !== null);
+  const partly = received > 0 && rcvd.some((l) => (l.received_qty ?? 0) !== 0 || l.received_amount !== 0);
+  const fullyReceived =
+    received > 0 && (!partly || rcvd.every((l) => (l.qty !== null && l.qty > 0 ? (l.received_qty ?? 0) >= l.qty : l.received_amount >= l.amount)));
+  const itemName = (id: number | null) => items?.find((i) => i.id === id)?.name ?? '';
+  const formatQty = (n: number) => (Math.round(n * 100000) / 100000).toLocaleString('en-US', { maximumFractionDigits: 5 });
   const dis = loading;
 
   /** Ribbon > Create a Copy: the same vendor and lines as a new, unsaved purchase order with the next number. */
@@ -448,7 +455,7 @@ export function PurchaseOrder({ winId, props }: WinProps) {
           icon="receipt"
           label={'Enter Bill\nfor this PO'}
           disabled={dis || txnId === null || form.closed || form.vendorId === null}
-          onClick={() => form.vendorId !== null && desk.open('bill', { id: null, vendorId: form.vendorId })}
+          onClick={() => form.vendorId !== null && txnId !== null && desk.open('bill', { id: null, vendorId: form.vendorId, poId: txnId })}
         />
       </RibbonGroup>
     </>
@@ -481,8 +488,9 @@ export function PurchaseOrder({ winId, props }: WinProps) {
           <Combo options={vendorOptions} value={form.vendorId} onChange={chooseVendor} disabled={dis} aria-label="Vendor" {...nameQuickFill(desk, 'vendor')} />
         </label>
         <span className="spacer" />
-        {doc?.closed && <span className="band-flag">{received ? 'Received in full' : 'Closed'}</span>}
+        {doc?.closed && <span className="band-flag">{fullyReceived ? 'Received in full' : 'Closed'}</span>}
         {!doc?.closed && form.closed && <span className="band-flag">Closed when saved</span>}
+        {!doc?.closed && !form.closed && received > 0 && <span className="band-flag">Partially received</span>}
       </div>
 
       <div className="f13-page">
@@ -537,6 +545,19 @@ export function PurchaseOrder({ winId, props }: WinProps) {
           purchase
           customers={customerOptions}
         />
+        {partly && !fullyReceived && (
+          <div className="f13-note">
+            Received on bills so far:{' '}
+            {rcvd
+              .map((l) =>
+                l.qty !== null && l.qty > 0
+                  ? `${itemName(l.item_id)} ${formatQty(l.received_qty ?? 0)} of ${formatQty(l.qty)}`
+                  : `${itemName(l.item_id)} ${formatMoney(l.received_amount)} of ${formatMoney(l.amount)}`,
+              )
+              .join('; ')}
+            .
+          </div>
+        )}
 
         <div className="sf13-foot">
           <div className="sf13-foot-left">

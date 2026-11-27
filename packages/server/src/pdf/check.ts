@@ -166,6 +166,15 @@ export function drawCheckRecord(db: DB, t: PurchTxn, into?: { doc: Doc; start: n
         return [name, [l.description, qty].filter((s) => s).join('  -  '), fullName(db, l.name_id), l.item_id !== null ? formatMoney(l.amount) : ''];
       }),
     ];
+    if (t.refund) {
+      // A refund has no lines: say what it pays back.
+      const c = db.prepare('SELECT type, num, date FROM txns WHERE id = ?').get(t.refund.credit_id) as { type: string; num: string; date: string } | undefined;
+      const what = c ? `Refund of ${c.type === 'PAYMENT' ? 'payment' : 'credit memo'}${c.num ? ` ${c.num}` : ''} of ${formatUsDate(c.date)}` : 'Refund';
+      const ar = db.prepare('SELECT ar_account_id FROM txns WHERE id = ?').get(t.id) as { ar_account_id: number | null };
+      // Her memo too, unless it only says the same (the window starts it as "Refund of credit memo 1905").
+      const memo = t.memo.trim() && !what.toLowerCase().startsWith(t.memo.trim().toLowerCase()) ? t.memo.trim() : '';
+      rows.push([acct(ar.ar_account_id), [what, memo].filter((s) => s).join('  -  '), fullName(db, t.name_id), formatMoney(t.refund.amount)]);
+    }
     totals = [['Check Amount', dollars(t.total)]];
   } else if (t.type === 'BILLPMT') {
     voucherTitle = 'Bill Payment Voucher';

@@ -29,7 +29,7 @@ import {
 } from '../controls/LineGrid';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
@@ -105,7 +105,7 @@ function itemRows(lines: ItemLine[]): GridLine[] {
 export function itemLinesToInput(lines: GridLine[]): ItemLineInput[] {
   return lines
     .filter((l) => !isBlankLine(l))
-    .map((l) => ({ item_id: l.itemId, description: l.description, qty: l.qty, rate: l.rate, amount: l.amount, name_id: null }));
+    .map((l) => ({ item_id: l.itemId, description: l.description, qty: l.qty, rate: l.rate, amount: l.amount, name_id: null, po_txn_id: null, po_seq: null }));
 }
 
 /** Banking > Write Checks (Ctrl+W). Props: { id: number | null, accountId?: number }. */
@@ -152,10 +152,12 @@ export function WriteChecks({ winId, props }: WinProps) {
     wantPayee.current = false;
     rootRef.current?.querySelector<HTMLInputElement>('[data-field="payee"]')?.focus();
   });
-  const focusNum = () => {
-    numRef.current?.focus();
-    numRef.current?.select();
-  };
+  /** To the check number (a duplicate she chose not to use). After the frame, so a save that put focus back where it was does not take it away again. */
+  const focusNum = () =>
+    requestAnimationFrame(() => {
+      numRef.current?.focus();
+      numRef.current?.select();
+    });
 
   const set = (patch: Partial<Form>) => {
     setError(null);
@@ -173,7 +175,8 @@ export function WriteChecks({ winId, props }: WinProps) {
       const clean = !isDirty();
       autoNum.current = num;
       setForm((cur) => ({ ...cur, num }));
-      guard.markOk(bankId, num);
+      // Not marked as checked: another check may take this number while the window stays open,
+      // so saving asks the server again (and warns about a duplicate).
       if (clean) markClean();
     } catch (e) {
       setError(errorMessage(e));
@@ -213,6 +216,13 @@ export function WriteChecks({ winId, props }: WinProps) {
       if (handOffLocked(desk, winId, t)) return false;
       if (t.type !== 'CHECK') {
         setError('That transaction is not a check.');
+        return false;
+      }
+      if (t.refund) {
+        // A refund of a customer credit has no lines to show here: it has its own window.
+        if (id === propId) desk.close(winId);
+        desk.open('refund', { id: t.id });
+        desk.setStatus(`Check${t.num ? ` ${t.num}` : ''} is a refund to a customer, so it opens in Issue a Refund.`);
         return false;
       }
       applyTxn(t);
@@ -349,6 +359,7 @@ export function WriteChecks({ winId, props }: WinProps) {
         .filter((r) => !isBlankExp(r))
         .map((r) => ({ account_id: r.accountId, amount: r.amount ?? 0, memo: r.memo, name_id: r.customerId })),
       items: itemLinesToInput(f.items),
+      refund: null,
     };
     try {
       const r =
@@ -459,7 +470,7 @@ export function WriteChecks({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);

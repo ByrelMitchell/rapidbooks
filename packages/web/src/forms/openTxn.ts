@@ -74,6 +74,7 @@ export async function openTxn(desk: Desktop, type: string, id: number): Promise<
   }
   const form = t.import_locked ? null : formFor(t.type, id);
   if (!form) desk.open(IMPORTED_WINDOW, { id });
+  else if (t.type === 'CHECK' && (t as Txn & { refund?: unknown }).refund) desk.open('refund', { id });
   else desk.open(form.kind, form.props);
   return true;
 }
@@ -89,4 +90,26 @@ export function handOffLocked(desk: Desktop, winId: string, t: Txn): boolean {
   desk.open(IMPORTED_WINDOW, { id: t.id });
   desk.setStatus(`${txnLabel(t)} was brought over from QuickBooks exactly as posted, so it opens as a list of its debits and credits.`);
   return true;
+}
+
+/**
+ * "Are you sure you want to delete this transaction?" (Edit > Delete in every form and the
+ * registers). A transaction with a line marked cleared at the bank gets QuickBooks' warning
+ * that deleting it changes what the bank account agrees with. Resolves true to delete.
+ */
+export async function confirmDeleteTxn(desk: Desktop, id: number): Promise<boolean> {
+  let cleared = false;
+  try {
+    const t = await api.get<Txn>(`/api/txns/${id}`);
+    cleared = t.splits.some((s) => s.cleared);
+  } catch {
+    // Not readable now: the delete itself will say what is wrong.
+  }
+  if (cleared) {
+    return desk.confirm(
+      'This transaction has been cleared at the bank. If you delete it, your bank balance in RapidBooks will no longer agree with your bank statement. Are you sure you want to delete it?',
+      { yes: '&OK', no: '&Cancel', title: 'Delete Cleared Transaction', icon: 'warning' },
+    );
+  }
+  return desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' });
 }

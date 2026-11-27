@@ -28,6 +28,11 @@ export interface BackupStatus {
   lastError: { at: string; message: string } | null;
   /** Backups were made but old ones could not be cleaned up. */
   rotationError: string | null;
+  /**
+   * The backup folder cannot be read now (a configured mount not connected, no permission),
+   * found when looking, not by a backup that failed. Null when the next backup will create it.
+   */
+  folderError: string | null;
   backups: BackupFileInfo[];
   /** "HH:MM", or null when the nightly backup is switched off. */
   schedule: string | null;
@@ -236,17 +241,21 @@ export class BackupService {
 
   status(): BackupStatus {
     let backups: BackupFileInfo[] = [];
-    let listError: string | null = null;
+    let folderError: string | null = null;
     try {
       backups = listBackups(this.dir);
     } catch (e) {
-      listError = describeError(e, this.dir);
+      // A default folder that is not there yet is made by the first backup: nothing is wrong.
+      const missing = (e as NodeJS.ErrnoException)?.code === 'ENOENT';
+      if (!missing || this.dirMustExist) folderError = describeError(e, this.dir);
     }
     const lastSuccess = backups[0] ?? null;
     const now = this.now();
-    const lastError = this.lastError ?? (listError ? { at: now, message: listError } : null);
+    // Only a backup that was tried and did not work is a failed backup.
+    const lastError = this.lastError;
     let warning: string | null = null;
     if (lastError) warning = `The last backup failed. ${lastError.message}`;
+    else if (folderError) warning = `RapidBooks cannot back up: ${folderError}`;
     else if (!lastSuccess) warning = 'RapidBooks has not been backed up yet.';
     else {
       const days = (now.getTime() - new Date(lastSuccess.at).getTime()) / DAY;
@@ -258,6 +267,7 @@ export class BackupService {
       lastAttempt: this.lastAttempt?.toISOString() ?? null,
       lastError: lastError ? { at: lastError.at.toISOString(), message: lastError.message } : null,
       rotationError: this.rotationError,
+      folderError,
       backups,
       schedule: this.time,
       nextRun: this.next?.toISOString() ?? null,

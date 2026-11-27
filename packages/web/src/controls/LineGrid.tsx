@@ -33,6 +33,9 @@ export interface GridLine {
   accountId: number | null;
   /** Customer:Job of a purchase line (only with the grid's `customers` column). */
   nameId?: number | null;
+  /** Bill lines: the purchase order line this receives (that P.O. and the line's seq). */
+  poTxnId?: number | null;
+  poSeq?: number | null;
 }
 
 let lineSeq = 0;

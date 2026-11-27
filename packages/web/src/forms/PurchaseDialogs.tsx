@@ -7,6 +7,7 @@ import { ListView, type Column } from '../controls/ListView';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
+import { defaultDiscountAccount, rememberDiscountAccount } from './discountAccount';
 import { commitActiveField, refocus, useLiveState } from '../util';
 import type { CreditUse } from './payBillsMath';
 import './receivables.css';
@@ -51,6 +52,7 @@ export function PoChooser({ winId, props }: WinProps) {
     { key: 'exp', title: 'Expected', width: '7rem', render: (r) => formatUsDate(r.expected_date) },
     { key: 'memo', title: 'Memo', render: (r) => r.memo },
     { key: 'total', title: 'Amount', width: '7.5rem', align: 'right', render: (r) => formatMoney(r.total) },
+    { key: 'remaining', title: 'Still to Come', width: '7.5rem', align: 'right', render: (r) => formatMoney(r.remaining) },
   ];
 
   return (
@@ -94,8 +96,6 @@ export interface BillDiscountResult {
   accountId: number | null;
 }
 
-let lastDiscountAccount: number | null = null;
-
 /**
  * Pay Bills > Set Discount for the current bill. Props: { label, date, total, open, credits,
  * discount, accountId, suggested, discountPct, discountDate, payDate }. Result: BillDiscountResult.
@@ -111,13 +111,14 @@ export function BillDiscount({ winId, props }: WinProps) {
   const discDate = props.discountDate as string | null;
   const max = open - creditsOn;
   const [amount, setAmount, amountRef] = useLiveState<number | null>(start > 0 ? start : Math.min(suggested, max) || null);
-  const [accountId, setAccountId, accountRef] = useLiveState<number | null>((props.accountId as number | null) ?? lastDiscountAccount);
+  const [accountId, setAccountId, accountRef] = useLiveState<number | null>((props.accountId as number | null) ?? null);
   const [error, setError] = useState<string | null>(null);
 
+  // No account yet: the one last chosen here, else one named like a vendor discount account.
   useEffect(() => {
     if (accountRef.current !== null || !accounts) return;
-    const guess = accounts.find((a) => !a.inactive && /discount/i.test(a.name) && a.type !== 'AR' && a.type !== 'AP');
-    if (guess) setAccountId(guess.id);
+    const guess = defaultDiscountAccount(accounts, 'vendor');
+    if (guess !== null) setAccountId(guess);
   }, [accounts]);
 
   const options = useMemo(
@@ -139,7 +140,7 @@ export function BillDiscount({ winId, props }: WinProps) {
     if (d < 0) return fail('A discount cannot be negative.');
     if (d > max) return fail(`The discount cannot be more than the ${formatMoney(max)} still owed on this bill${creditsOn ? ' after its credits' : ''}.`);
     if (d > 0 && accountRef.current === null) return fail('Choose the account the discount is posted to.');
-    if (d > 0) lastDiscountAccount = accountRef.current;
+    if (d > 0 && accountRef.current !== null) rememberDiscountAccount('vendor', accountRef.current);
     const result: BillDiscountResult = { discount: d, accountId: d > 0 ? accountRef.current : null };
     desk.resolveWindow(winId, result);
     desk.close(winId);

@@ -4,7 +4,7 @@ import { api, errorMessage, useData } from '../api';
 import { ListView, type Column } from '../controls/ListView';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import type { WinProps } from '../shell/registry';
-import { openTxn as openTxnWindow } from '../forms/openTxn';
+import { openTxn as openTxnWindow, confirmDeleteTxn } from '../forms/openTxn';
 import { openQuickReport } from '../reports/open';
 import { RibbonIcon } from '../forms/Ribbon';
 import { Mnemonic } from '../util';
@@ -54,7 +54,7 @@ export function Register({ winId, props }: WinProps) {
 
   const deleteTxn = async () => {
     if (!current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, current.txn_id))) return;
     try {
       await api.del(`/api/txns/${current.txn_id}`);
       desk.setStatus('Transaction deleted.');

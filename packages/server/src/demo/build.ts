@@ -129,7 +129,9 @@ class DemoBuilder {
   checkNum = 5001;
   pendingPayments: PendingPayment[] = [];
   undeposited: number[] = [];
-  openPOs: { id: number; vendor: number; lines: { item_id: number; qty: number; rate: number }[]; due: string }[] = [];
+  /** P.O.s still to come in; `seq` is the P.O. line each line receives (a backorder has only some of them). */
+  openPOs: { id: number; vendor: number; lines: { item_id: number; qty: number; rate: number; seq: number }[]; due: string; backorder?: boolean }[] = [];
+  shortNearEnd = false;
   liab = { fed: 0, fica: 0, state: 0, futa: 0, suta: 0 };
   loanBalance = 14_000_000;
 
@@ -817,15 +819,20 @@ class DemoBuilder {
       message: 'Please include mill certs with shipment.',
       lines,
     });
-    this.openPOs.push({ id, vendor, lines, due });
+    this.openPOs.push({ id, vendor, lines: lines.map((l, seq) => ({ ...l, seq })), due });
   }
 
   receivePOs(d: string) {
     const ready = this.openPOs.filter((p) => p.due <= d && d <= addDays(this.through, -5));
     this.openPOs = this.openPOs.filter((p) => !ready.includes(p));
     for (const po of ready) {
-      const short = this.chance(0.1);
-      const items = po.lines.map((l, i) => ({ ...l, qty: short && i === 0 ? Math.floor(l.qty * 0.75) : l.qty, rate: l.rate }));
+      // Now and then the first line comes in short and the rest is backordered. One in the
+      // last month always does, its balance due after the end, so the file ends with a partly
+      // received P.O.
+      const lateShort = !po.backorder && !this.shortNearEnd && d >= addDays(this.through, -30);
+      const short = !po.backorder && (this.chance(0.1) || lateShort);
+      if (lateShort && short) this.shortNearEnd = true;
+      const items = po.lines.map((l, i) => ({ ...l, qty: short && i === 0 ? Math.floor(l.qty * 0.75) : l.qty }));
       const freight = this.chance(0.4) ? [{ item_id: this.items.freight, qty: 1, rate: this.dollars(75, 225) }] : [];
       this.save({
         type: 'BILL',
@@ -834,18 +841,32 @@ class DemoBuilder {
         name_id: po.vendor,
         terms_id: this.vendorTerms(po.vendor),
         po_ids: [po.id],
-        memo: short ? 'Short shipped - balance backordered' : '',
-        items: [...items, ...freight],
+        memo: short ? 'Short shipped - balance backordered' : po.backorder ? 'Backordered balance' : '',
+        items: [
+          ...items.map(({ seq, ...l }) => ({ ...l, po_txn_id: po.id, po_seq: seq })),
+          ...freight,
+        ],
       });
+      if (short) {
+        const first = po.lines[0];
+        this.openPOs.push({
+          id: po.id,
+          vendor: po.vendor,
+          lines: [{ ...first, qty: first.qty - items[0].qty }],
+          due: lateShort ? addDays(this.through, this.int(3, 10)) : addDays(d, this.int(10, 20)),
+          backorder: true,
+        });
+      }
       // Now and then something comes in damaged.
       if (this.chance(0.05)) {
+        const { seq: _seq, ...first } = items[0];
         this.save({
           type: 'BILLCREDIT',
           date: addDays(d, 3),
           ref_no: `RMA-${this.int(1000, 9999)}`,
           name_id: po.vendor,
           memo: 'Damaged in transit - returned',
-          items: [{ ...items[0], qty: Math.max(1, Math.floor(items[0].qty / 10)) }],
+          items: [{ ...first, qty: Math.max(1, Math.floor(first.qty / 10)) }],
         });
       }
     }

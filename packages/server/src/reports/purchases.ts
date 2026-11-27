@@ -19,6 +19,7 @@ import {
   type Params,
   type Row,
 } from './engine';
+import { poReceived } from '../ledger/purchasing';
 
 // Purchases reports, from the lines of bills, bill credits (negative) and checks. Like
 // QuickBooks these are item reports: only Items-tab lines count, unless
@@ -213,17 +214,21 @@ export function openPurchaseOrders(db: DB, p: Params): Built {
   const f = p.name_ids.length ? nameFilter(L, p) : null;
   const out: Row[] = [];
   let total = 0;
+  let openTotal = 0;
   for (const r of rows) {
     if (f && !f.has(r.name_id)) continue;
+    // What is still to be received (part of it may be on bills already).
+    const open = poReceived(db, r.id).remaining;
     total += r.total;
+    openTotal += open;
     out.push({
       kind: 'data',
       depth: 0,
-      cells: { type: 'Purchase Order', date: r.date, num: r.num, name: vendorLabel(L, r.name_id), memo: r.memo, deliv_date: r.expected_date || null, amount: r.total, open_balance: r.total },
+      cells: { type: 'Purchase Order', date: r.date, num: r.num, name: vendorLabel(L, r.name_id), memo: r.memo, deliv_date: r.expected_date || null, amount: r.total, open_balance: open },
       drill: txnDrill(r.id, 'PURCHORD'),
     });
   }
-  out.push({ kind: 'total', depth: 0, label: 'TOTAL', cells: { amount: total, open_balance: total } });
+  out.push({ kind: 'total', depth: 0, label: 'TOTAL', cells: { amount: total, open_balance: openTotal } });
   return {
     subtitle: rangeSubtitle(p),
     columns: [

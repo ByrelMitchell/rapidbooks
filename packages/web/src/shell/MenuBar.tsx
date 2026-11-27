@@ -227,6 +227,7 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
   const [subItem, setSubItem] = useState(-1);
   const barRef = useRef<HTMLDivElement>(null);
   const subRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   const openMenu = (i: number) => {
     setOpen(i);
@@ -267,6 +268,14 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
   // Keep the open submenu on screen: to the left of its menu when there is no room on the
   // right, and moved up when it would run off the bottom.
   useLayoutEffect(() => {
+    // A menu near the right edge (Window, Help) moves left so it stays in the window.
+    const drop = dropRef.current;
+    if (drop) {
+      drop.style.left = '';
+      const r = drop.getBoundingClientRect();
+      const over = r.right - window.innerWidth + 2;
+      if (over > 0) drop.style.left = `${-Math.min(over, r.left)}px`;
+    }
     const el = subRef.current;
     const parent = el?.parentElement;
     if (!el || !parent) return;
@@ -364,7 +373,7 @@ export function MenuBar({ ref }: { ref?: Ref<MenuBarHandle> }) {
             <Mnemonic label={m.label} />
           </div>
           {open === i && (
-            <div className="menu-drop" role="menu">
+            <div ref={dropRef} className="menu-drop" role="menu">
               {m.items.map((x, j) => {
                 if (x === 'sep') return <div key={`sep${j}`} className="menu-sep" />;
                 const on = enabled(x);

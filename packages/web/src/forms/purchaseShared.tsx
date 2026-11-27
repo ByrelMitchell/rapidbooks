@@ -39,6 +39,8 @@ export function gridFromItemLines(lines: ItemLine[]): GridLine[] {
         amount: s.item_id !== null && s.amount !== natural ? s.amount : null,
         accountId: null,
         nameId: s.name_id,
+        poTxnId: s.po_txn_id,
+        poSeq: s.po_seq,
       };
     });
 }
@@ -54,11 +56,43 @@ export function itemLinesToInput(lines: GridLine[]): ItemLineInput[] {
       rate: l.rate,
       amount: l.amount,
       name_id: l.nameId ?? null,
+      po_txn_id: l.poTxnId ?? null,
+      po_seq: l.poSeq ?? null,
     }));
 }
 
-/** Copies of stored lines for a new document (bill received against a P.O.): new row keys. */
-export const copyItemLines = (lines: ItemLine[]): GridLine[] => gridFromItemLines(lines).map((l) => ({ ...l, key: newLineKey() }));
+/** Copies of stored lines for a new document: new row keys, and no tie to a purchase order. */
+export const copyItemLines = (lines: ItemLine[]): GridLine[] =>
+  gridFromItemLines(lines).map((l) => ({ ...l, key: newLineKey(), poTxnId: null, poSeq: null }));
+
+/**
+ * A purchase order's lines as bill lines receiving it: what is still to come of each line
+ * (all of it the first time), tied to its P.O. line. Lines received in full are left out, and
+ * so are its text-only lines once anything has been received.
+ */
+export function receiveLines(po: { id: number; items: ItemLine[] }): GridLine[] {
+  const started = po.items.some((l) => (l.received_qty ?? 0) !== 0 || l.received_amount !== 0);
+  const out: GridLine[] = [];
+  for (const l of [...po.items].sort((a, b) => a.seq - b.seq)) {
+    const g = gridFromItemLines([l])[0];
+    if (l.item_id === null) {
+      if (!started) out.push({ ...g, poTxnId: null, poSeq: null });
+      continue;
+    }
+    const tie = { poTxnId: po.id, poSeq: l.seq };
+    if (l.qty !== null && l.qty > 0) {
+      const left = Math.round((l.qty - (l.received_qty ?? 0)) * 100000) / 100000;
+      if (left <= 0) continue;
+      // An amount typed over qty x cost is for the whole order: for the rest it is worked out again.
+      out.push({ ...g, ...tie, qty: left, amount: left === l.qty ? g.amount : null });
+    } else {
+      const left = l.amount - l.received_amount;
+      if (l.received_amount !== 0 && left <= 0) continue;
+      out.push({ ...g, ...tie, amount: l.received_amount === 0 ? g.amount : left });
+    }
+  }
+  return out;
+}
 
 /** Append rows before the trailing blank rows. */
 export function appendLines(prev: GridLine[], add: GridLine[], minRows: number): GridLine[] {

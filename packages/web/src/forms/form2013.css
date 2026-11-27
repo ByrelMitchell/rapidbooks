@@ -81,6 +81,13 @@
   padding-top: 0.125rem;
 }
 
+/* A small heading over a stack ("Use credit to" on a credit memo). */
+.rb-caption {
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  color: #555;
+}
+
 .rb-big,
 .rb-small,
 .rb-arrows button,
@@ -1058,8 +1065,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-height: 0;
-  flex: 1 1 auto;
+  /* Not below its contents (the list keeps its 9rem): in a short window the page scrolls
+     instead of the buttons sliding over the Discount & Credit box. */
+  flex: 1 0 auto;
 }
 
 .pb13-top {
@@ -1110,6 +1118,13 @@
 .line-grid tbody tr.pb13-row:nth-child(even) td.cell-text,
 .line-grid tbody tr.pb13-row:nth-child(even) td.rcv-check {
   background: #dfe5ee;
+}
+
+/* The bill she is on is green like any current line (the grey above must not win, or its
+   white text would be unreadable). */
+.line-grid tbody tr.pb13-row:focus-within td.cell-text,
+.line-grid tbody tr.pb13-row:focus-within td.rcv-check {
+  background: var(--sel);
 }
 
 .pb13-rowbtns {

@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { formatWhen, timeAgo, useBackupStatus } from '../admin/backupStatus';
 import { openRegister } from './shortcuts';
 import { useDesktop, type Desktop } from './desktop';
@@ -115,7 +115,7 @@ const LINES: { d: string; arrow?: boolean }[] = [
   { d: 'M195 452H349', arrow: true }, // Estimates -> Create Invoices
   { d: 'M393 452H925', arrow: true }, // Create Invoices -> Receive Payments
   { d: 'M685 567H925', arrow: true }, // Finance Charges -> Statements
-  { d: 'M947 545V516', arrow: true }, // Statements -> Receive Payments
+  { d: 'M947 545V535', arrow: true }, // Statements -> Receive Payments (short: it stops under that caption)
   { d: 'M969 452H1524', arrow: true }, // Receive Payments -> Record Deposits
   { d: 'M371 709V516', arrow: true }, // Enter Time -> Create Invoices
   { d: 'M393 731H609', arrow: true }, // Enter Time -> Pay Employees
@@ -128,6 +128,20 @@ export function Navigator(_: WinProps) {
   const desk = useDesktop();
   const { status, error } = useBackupStatus();
   const rootRef = useRef<HTMLDivElement>(null);
+  // Captions and icons grow and shrink with the diagram, so they never run into each other
+  // in a small window (14.5px at 1300px wide; never under 10px).
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [fontPx, setFontPx] = useState<number | null>(null);
+  useEffect(() => {
+    const el = mapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (w > 0) setFontPx(Math.max(10, Math.min(16, Math.round((w * 14.5 * 10) / 1300) / 10)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Arrow keys move to the nearest button in that direction; Home / End: first / last.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -171,7 +185,7 @@ export function Navigator(_: WinProps) {
 
   return (
     <div className="home" ref={rootRef} onKeyDown={onKeyDown}>
-      <div className="home-map">
+      <div className="home-map" ref={mapRef} style={fontPx !== null ? { fontSize: `${fontPx}px` } : undefined}>
         {PANELS.map((p) => (
           <div
             key={p.title}

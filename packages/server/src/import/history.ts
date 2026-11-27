@@ -1201,7 +1201,7 @@ function inputsFor(p: Plan, L: Lookups, links: ImportLink[], uf: number, missing
       if (isCheck && p.splits[0].amount > 0) return 'its first line (the bank account) is not a credit';
       const sign = p.type === 'BILLCREDIT' ? -1 : 1;
       const expenses: { account_id: number; amount: number; memo: string; name_id: number | null }[] = [];
-      const items: { item_id: number; description: string; qty: number | null; rate: number | null; amount: number; name_id: number | null }[] = [];
+      const items: { item_id: number; description: string; qty: number | null; rate: number | null; amount: number; name_id: number | null; po_txn_id: null; po_seq: null }[] = [];
       for (const { r, s, i } of rest) {
         if (i === head || (!isCheck && s.account_id === h.ap_account_id)) continue;
         const amount = sign * s.amount;
@@ -1217,13 +1217,15 @@ function inputsFor(p: Plan, L: Lookups, links: ImportLink[], uf: number, missing
             rate: r.price && !r.price.percent ? rate3(r.price.value) : null,
             amount,
             name_id: customerOn(s.name_id),
+            po_txn_id: null,
+            po_seq: null,
           });
         } else {
           expenses.push({ account_id: s.account_id, amount, memo: r.memo, name_id: customerOn(s.name_id) });
         }
       }
       if (isCheck) {
-        return [{ type: 'CHECK', ...base, to_print: false, account_id: h.account_id, address: h.bill_addr, expenses, items }];
+        return [{ type: 'CHECK', ...base, to_print: false, account_id: h.account_id, address: h.bill_addr, expenses, items, refund: null }];
       }
       const bill = {
         ...base,

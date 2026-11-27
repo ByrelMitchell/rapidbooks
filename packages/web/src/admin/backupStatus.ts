@@ -15,6 +15,7 @@ export interface BackupStatus {
   lastAttempt: string | null;
   lastError: { at: string; message: string } | null;
   rotationError: string | null;
+  folderError: string | null;
   backups: BackupFileInfo[];
   schedule: string | null;
   nextRun: string | null;

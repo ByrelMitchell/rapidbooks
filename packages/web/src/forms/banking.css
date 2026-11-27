@@ -230,3 +230,22 @@
     grid-row: auto;
   }
 }
+
+/* Issue a Refund */
+.refund13 .addr-box {
+  width: 18rem;
+  height: auto;
+}
+.refund13-bank,
+.refund13-num {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.refund13-num .num-field {
+  width: 7rem;
+}
+.refund13 .dlg-fields > .short-amount {
+  width: 9rem;
+  justify-self: start;
+}

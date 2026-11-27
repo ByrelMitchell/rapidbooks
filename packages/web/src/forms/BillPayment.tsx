@@ -4,7 +4,7 @@ import { api, errorMessage, useData } from '../api';
 import { AmountField, parseAmount } from '../controls/AmountField';
 import { DateField } from '../controls/DateField';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { adjacentTxn } from './receivablesShared';
@@ -202,7 +202,7 @@ export function BillPayment({ winId, props }: WinProps) {
 
   const remove = async () => {
     if (busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, txnIdRef.current))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${txnIdRef.current}`);

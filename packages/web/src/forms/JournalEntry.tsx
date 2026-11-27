@@ -6,7 +6,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, refocus, useLiveState } from '../util';
 import { openQuickReport } from '../reports/open';
@@ -170,6 +170,8 @@ export function JournalEntry({ winId, props }: WinProps) {
         if (diff > 0) l.credit = diff;
         else if (diff < 0) l.debit = -diff;
       }
+      // And carries the memo down from the line above to a new line.
+      if (accountId !== null && l.memo === '' && i > 0) l.memo = lines[i - 1]?.memo ?? '';
       return l;
     });
 
@@ -289,7 +291,7 @@ export function JournalEntry({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     try {
       await api.del(`/api/txns/${id}`);
       desk.setStatus('General journal entry deleted.');

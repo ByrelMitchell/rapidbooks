@@ -19,7 +19,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { accountQuickFill, nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, isQuietBlur, Mnemonic, refocus, useLiveState } from '../util';
 import { bankOptions, daysBetween, EndingBalance, firstBankId, nextCheckNum, payeeAddress, useCheckNumGuard } from './checkShared';
@@ -135,10 +135,12 @@ export function Paycheck({ winId, props }: WinProps) {
     wantFocus.current = false;
     rootRef.current?.querySelector<HTMLInputElement>('[data-field="employee"]')?.focus();
   });
-  const focusNum = () => {
-    numRef.current?.focus();
-    numRef.current?.select();
-  };
+  /** To the check number (a duplicate she chose not to use). After the frame, so a save that put focus back where it was does not take it away again. */
+  const focusNum = () =>
+    requestAnimationFrame(() => {
+      numRef.current?.focus();
+      numRef.current?.select();
+    });
 
   const set = (patch: Partial<Form>) => {
     setError(null);
@@ -155,7 +157,8 @@ export function Paycheck({ winId, props }: WinProps) {
       const clean = !isDirty();
       autoNum.current = num;
       setForm((cur) => ({ ...cur, num }));
-      guard.markOk(bankId, num);
+      // Not marked as checked: another check may take this number while the window stays open,
+      // so saving asks the server again (and warns about a duplicate).
       if (clean) markClean();
     } catch (e) {
       setError(errorMessage(e));
@@ -491,7 +494,7 @@ export function Paycheck({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);

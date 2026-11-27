@@ -247,6 +247,9 @@ export const ItemLineInput = z.object({
   rate: Rate.nullable().default(null),
   amount: z.number().int().nullable().default(null), // cents; null = computed
   name_id: z.number().int().nullable().default(null), // Customer:Job, optional
+  // Bills: the purchase order line this line receives (one of the bill's po_ids, and that line's seq).
+  po_txn_id: z.number().int().nullable().default(null),
+  po_seq: z.number().int().nullable().default(null),
 });
 export type ItemLineInput = z.infer<typeof ItemLineInput>;
 
@@ -287,7 +290,9 @@ const BillFields = {
 export const BillInput = z.object({
   type: z.enum(['BILL']),
   ...BillFields,
-  po_ids: z.array(z.number().int()).default([]), // purchase orders received on this bill; they are closed
+  // Purchase orders received on this bill. Each closes when all its item lines are received
+  // in full (by this bill and others); item lines say which P.O. line they receive.
+  po_ids: z.array(z.number().int()).default([]),
 });
 export type BillInput = z.infer<typeof BillInput>;
 
@@ -331,6 +336,17 @@ export const CheckInput = z.object({
   version: z.number().int().optional(),
   expenses: z.array(ExpenseLineInput).default([]),
   items: z.array(ItemLineInput).default([]),
+  /**
+   * Issue a Refund: this check pays back a customer's credit memo (or unapplied payment)
+   * instead of having lines. Dr A/R, Cr the bank; the credit is applied to the check.
+   */
+  refund: z
+    .object({
+      credit_id: z.number().int(),
+      amount: z.number().int(), // cents
+    })
+    .nullable()
+    .default(null),
 });
 export type CheckInput = z.infer<typeof CheckInput>;
 
@@ -524,6 +540,12 @@ export interface ItemLine {
   amount: number; // cents
   name_id: number | null; // Customer:Job
   account_id: number | null; // the account it posted to (null on purchase orders)
+  /** Bills: the purchase order line this line received. */
+  po_txn_id: number | null;
+  po_seq: number | null;
+  /** Purchase orders: how much of this line bills have received (quantity, and amount). */
+  received_qty: number | null;
+  received_amount: number;
 }
 
 /** A stored paycheck line. */
@@ -575,6 +597,8 @@ export interface PurchTxn extends Txn {
   po_ids: number[]; // BILL: purchase orders received on it
   bill_ids: number[]; // PURCHORD: bills it was received on
   paycheck: PaycheckTotals | null; // PAYCHECK only
+  /** CHECK: the customer credit memo (or payment) it refunds, and how much; null for other checks. */
+  refund: { credit_id: number; amount: number } | null;
 }
 
 export type AnyTxn = Txn | DocTxn | PurchTxn;
@@ -1002,6 +1026,8 @@ export interface OpenPurchaseOrder {
   full_name: string;
   memo: string;
   total: number;
+  /** The amount not yet received on a bill. */
+  remaining: number;
 }
 
 /** A bill with an open balance, for Pay Bills. */

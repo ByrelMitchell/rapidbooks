@@ -203,6 +203,55 @@ describe('purchase orders', () => {
     expect(() => simpleBill(100, { po_ids: [p1] })).toThrow(/Purchase order 1 is already closed/);
     expect(trialBalance()).toBe(0);
   });
+
+  it('stay open until every line is received, over several bills', () => {
+    const inserts = item('Inserts', { type: 'PART', account_id: sales, cost: 4000, purchase_account_id: supplies });
+    const p = po({ num: '7', lines: [{ item_id: bar, qty: 50, rate: 1650 }, { description: 'Mill certs please' }, { item_id: inserts, qty: 2, rate: 4000 }] }).id;
+    const line = (seq: number, qty: number, rate: number, item = bar) => ({ item_id: item, qty, rate, po_txn_id: p, po_seq: seq });
+
+    // 30 of the 50 bars: still open, 20 bars and the inserts to come.
+    const b1 = bill({ po_ids: [p], items: [line(0, 30, 1650)] }).id;
+    expect(doc(p).closed).toBe(false);
+    expect(doc(p).items.map((l) => [l.received_qty, l.received_amount])).toEqual([[30, 49500], [0, 0], [0, 0]]);
+    expect(doc(b1).items[0]).toMatchObject({ po_txn_id: p, po_seq: 0 });
+    expect(listOpenPurchaseOrders(db, steel)).toEqual([expect.objectContaining({ id: p, total: 90500, remaining: 33000 + 8000 })]);
+    expect(db.prepare("SELECT amount FROM links WHERE kind = 'po' AND from_txn = ?").get(b1)).toEqual({ amount: 49500 });
+
+    // The rest on a second bill (at a different price): received in full, closed.
+    const b2 = bill({ po_ids: [p], items: [line(0, 20, 1700), line(2, 2, 4000, inserts)] }).id;
+    expect(doc(p)).toMatchObject({ closed: true, bill_ids: [b1, b2] });
+    expect(listOpenPurchaseOrders(db, steel)).toEqual([]);
+
+    // The second bill now takes only 10 bars: open again, 10 to come.
+    bill({ version: doc(b2).version, po_ids: [p], items: [line(0, 10, 1700), line(2, 2, 4000, inserts)] }, b2);
+    expect(doc(p).closed).toBe(false);
+    expect(listOpenPurchaseOrders(db, steel)[0].remaining).toBe(16500);
+
+    // Received lines stay where they are on the P.O.
+    expect(() => po({ num: '7', version: doc(p).version, lines: [{ item_id: inserts, qty: 2, rate: 4000 }] }, p)).toThrow(
+      /Line 1 \(Bar Stock\) has been received on a bill/,
+    );
+    po({ num: '7', version: doc(p).version, lines: [{ item_id: bar, qty: 40, rate: 1650 }, { description: 'Mill certs please' }, { item_id: inserts, qty: 2, rate: 4000 }] }, p);
+    expect(doc(p).closed).toBe(true); // 40 ordered, 40 received: in full
+    po({ num: '7', version: doc(p).version, closed: true, lines: [{ item_id: bar, qty: 45, rate: 1650 }, { description: 'Mill certs please' }, { item_id: inserts, qty: 2, rate: 4000 }] }, p);
+    expect(doc(p).closed).toBe(false); // 5 more ordered
+    po({ num: '7', version: doc(p).version, lines: [{ item_id: bar, qty: 40, rate: 1650 }, { description: 'Mill certs please' }, { item_id: inserts, qty: 2, rate: 4000 }] }, p);
+    expect(doc(p).closed).toBe(true);
+    deleteTxn(db, b1);
+    expect(doc(p).closed).toBe(false);
+
+    // A P.O. she closes by hand stays closed while a bill on it is changed without taking anything away.
+    po({ num: '7', closed: true, version: doc(p).version, lines: [{ item_id: bar, qty: 40, rate: 1650 }, { description: 'Mill certs please' }, { item_id: inserts, qty: 2, rate: 4000 }] }, p);
+    bill({ version: doc(b2).version, po_ids: [p], memo: 'checked', items: [line(0, 10, 1700), line(2, 2, 4000, inserts)] }, b2);
+    expect(doc(p).closed).toBe(true);
+
+    // A line whose item she changed is no longer that P.O. line.
+    const p2 = po({ lines: [{ item_id: bar, qty: 5, rate: 1650 }] }).id;
+    const b3 = bill({ po_ids: [p2], items: [{ item_id: inserts, qty: 1, rate: 4000, po_txn_id: p2, po_seq: 0 }] }).id;
+    expect(doc(b3).items[0].po_txn_id).toBeNull();
+    expect(doc(p2).closed).toBe(true); // received with no P.O. lines named: in full, as before
+    expect(trialBalance()).toBe(0);
+  });
 });
 
 describe('bills and bill credits', () => {

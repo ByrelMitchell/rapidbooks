@@ -46,7 +46,8 @@ import {
   CHECK_TYPES,
   getPurchTxn,
   PURCH_TYPES,
-  reopenPurchaseOrders,
+  poReceiptSnapshot,
+  settlePurchaseOrders,
 } from './purchasing';
 
 // The posting engine. Every transaction type has a builder that turns the form's
@@ -102,6 +103,9 @@ export interface StoredLine {
   ref_no: string;
   pay_method: string;
   payroll_item_id?: number | null;
+  /** Bill item lines: the purchase order line this receives (that P.O. and its line's seq). */
+  po_txn_id?: number | null;
+  po_seq?: number | null;
 }
 
 export interface BuiltLink {
@@ -625,13 +629,13 @@ export function saveTxn(db: DB, input: TxnInput, id?: number, opts: SaveOpts = {
       db.prepare('DELETE FROM lines WHERE txn_id = ?').run(txnId);
       const insLine = db.prepare(
         `INSERT INTO lines (txn_id, seq, item_id, description, qty, rate, rate_is_percent, amount, account_id, name_id, ref_no,
-                            pay_method, payroll_item_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            pay_method, payroll_item_id, po_txn_id, po_seq)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       built.lines.forEach((l, seq) =>
         insLine.run(
           txnId, seq, l.item_id, l.description, l.qty, l.rate, l.rate_is_percent ? 1 : 0, l.amount, l.account_id,
-          l.name_id, l.ref_no, l.pay_method, l.payroll_item_id ?? null,
+          l.name_id, l.ref_no, l.pay_method, l.payroll_item_id ?? null, l.po_txn_id ?? null, l.po_seq ?? null,
         ),
       );
     }
@@ -855,14 +859,17 @@ export function deleteTxn(db: DB, id: number) {
         .all(id) as (DroppedDiscount & { from_txn: number })[];
       for (const r of rows) repost.set(r.from_txn, [...(repost.get(r.from_txn) ?? []), r]);
     }
-    // Purchase orders received on this bill reopen.
+    // Purchase orders received on this bill reopen (unless other bills still receive them in full).
     const pos =
       before.type === 'BILL'
-        ? (db.prepare("SELECT to_txn FROM links WHERE kind = 'po' AND from_txn = ?").all(id) as { to_txn: number }[]).map((r) => r.to_txn)
-        : [];
+        ? poReceiptSnapshot(
+            db,
+            (db.prepare("SELECT to_txn FROM links WHERE kind = 'po' AND from_txn = ?").all(id) as { to_txn: number }[]).map((r) => r.to_txn),
+          )
+        : new Map<number, number>();
     db.prepare('DELETE FROM txns WHERE id = ?').run(id); // splits, lines and links go with it
     for (const [p, dropped] of repost) repostPayment(db, p, dropped);
-    reopenPurchaseOrders(db, pos);
+    settlePurchaseOrders(db, pos);
     db.prepare('INSERT INTO audit_log (action, txn_id, detail) VALUES (?, ?, ?)').run(
       'delete',
       id,

@@ -19,13 +19,13 @@ import { DateField } from '../controls/DateField';
 import { itemMap, LineGrid, linesForCompare, linesTotal, padLines, type GridLine, type LineGridHandle } from '../controls/LineGrid';
 import { nameQuickFill, termsQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { openQuickReport } from '../reports/open';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import {
   appendLines,
-  copyItemLines,
+  receiveLines,
   ExpenseGrid,
   expForCompare,
   expFromStored,
@@ -94,6 +94,8 @@ export function EnterBills({ winId, props }: WinProps) {
   const propId = (props.id as number | null | undefined) ?? null;
   const presetVendor = (props.vendorId as number | undefined) ?? null;
   const presetCredit = !!props.credit;
+  /** Purchase order > Enter Bill for this PO: receive that P.O. without asking. */
+  const presetPo = (props.poId as number | undefined) ?? null;
   const desk = useDesktop();
   const { data: vendors } = useData<Name[]>('/api/names?kind=vendor');
   const { data: customers } = useData<Name[]>('/api/names?kind=customer');
@@ -234,9 +236,14 @@ export function EnterBills({ winId, props }: WinProps) {
     if (!yes || !still()) return;
     const ids = await desk.openForResult<number[]>('pochooser', { vendorId });
     if (!ids || ids.length === 0 || !still()) return;
+    await receivePurchaseOrders(ids);
+  };
+
+  /** Copy what is still to come on these P.O.s to the Items tab, each line tied to its P.O. line. */
+  const receivePurchaseOrders = async (ids: number[]) => {
     try {
       const pos = await Promise.all(ids.map((id) => api.get<PurchTxn>(`/api/txns/${id}`)));
-      const add = pos.flatMap((p) => copyItemLines(p.items));
+      const add = pos.flatMap((p) => receiveLines(p));
       setForm((f) => ({ ...f, items: appendLines(f.items, add, MIN_ROWS), poIds: [...new Set([...f.poIds, ...ids])] }));
       setTab('items');
       requestAnimationFrame(() => itemRef.current?.focusCell(0, 'qty'));
@@ -265,8 +272,9 @@ export function EnterBills({ winId, props }: WinProps) {
     if (id === null || !vendors || !terms || loading || txnId !== null) return;
     pendingVendor.current = null;
     const clean = !isDirty();
-    chooseVendor(id);
+    chooseVendor(id, presetPo === null);
     if (clean) snapshot.current = serialize(formRef.current);
+    if (presetPo !== null) void receivePurchaseOrders([presetPo]);
   }, [vendors, terms, loading, txnId]);
 
   const setCredit = (credit: boolean) => {
@@ -438,7 +446,7 @@ export function EnterBills({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null || busy.current) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     busy.current = true;
     try {
       await api.del(`/api/txns/${id}`);
@@ -712,8 +720,9 @@ export function EnterBills({ winId, props }: WinProps) {
         )}
         {form.poIds.length > 0 && !credit && (
           <div className="f13-note">
-            Receiving against {form.poIds.length === 1 ? 'one purchase order' : `${form.poIds.length} purchase orders`}; saving the bill closes{' '}
-            {form.poIds.length === 1 ? 'it' : 'them'}.
+            {txnId === null ? 'Receiving against' : 'Received against'}{' '}
+            {form.poIds.length === 1 ? 'one purchase order' : `${form.poIds.length} purchase orders`}
+            {txnId === null ? '. A purchase order closes when everything on it has been received.' : '.'}
           </div>
         )}
 

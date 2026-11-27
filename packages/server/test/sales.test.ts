@@ -566,6 +566,59 @@ describe('applying credits', () => {
   });
 });
 
+describe('refunds', () => {
+  const refund = (credit_id: number, amount: number, extra: Record<string, unknown> = {}, id?: number) =>
+    saveTxn(
+      db,
+      TxnInput.parse({ type: 'CHECK', date: '2026-01-15', account_id: checking, num: '501', refund: { credit_id, amount }, ...extra }),
+      id,
+    );
+  const balanceOf = (id: number) => listNames(db, 'customer').find((n) => n.id === id)!.balance;
+
+  it('pay back a credit memo by check: Dr A/R, Cr the bank, and the credit is used up', () => {
+    const cm = creditMemo([L(mach, null, null, { amount: 5500 })], { num: 'CM1' }).id;
+    expect(balanceOf(acme)).toBe(-5500);
+    const r = refund(cm, 5500, { address: 'Acme\n1200 Industrial Pkwy', memo: 'Refund of CM1' }).id;
+    expect(splitsOf(r)).toEqual([
+      [checking, -5500, acme],
+      [ar, 5500, acme],
+    ]);
+    expect(getTxn(db, r)).toMatchObject({ type: 'CHECK', num: '501', name_id: acme, total: 5500, refund: { credit_id: cm, amount: 5500 } });
+    expect(doc(cm).unapplied).toBe(0);
+    expect(listCredits(db, acme)).toEqual([]);
+    expect(balanceOf(acme)).toBe(0);
+
+    // Part of a credit, then more of it; never more than is left.
+    const cm2 = creditMemo([L(mach, null, null, { amount: 10000 })]).id;
+    const r2 = refund(cm2, 4000).id;
+    expect(doc(cm2).unapplied).toBe(6000);
+    expect(() => refund(cm2, 6001)).toThrow(/Only \$60.00 of that credit memo is left to refund/);
+    refund(cm2, 10000, { version: version(r2) }, r2); // editing it counts its own amount as available
+    expect(doc(cm2).unapplied).toBe(0);
+    expect(() => refund(cm, 1, { version: version(r2) }, r2)).toThrow(/cannot be made into a refund of another credit/);
+
+    // An unapplied payment can be refunded too.
+    const pmt = payment(2500).id;
+    refund(pmt, 2500);
+    expect(doc(pmt).unapplied).toBe(0);
+
+    // Not a check with lines, not a plain-check edit, not more than nothing.
+    expect(() => refund(cm2, 100)).toThrow(/Only \$0.00/);
+    expect(() => refund(cm, 100, { expenses: [{ account_id: sales, amount: 100 }] })).toThrow(/no expense or item lines/);
+    expect(() =>
+      saveTxn(db, TxnInput.parse({ type: 'CHECK', date: '2026-01-15', account_id: checking, version: version(r), expenses: [{ account_id: sales, amount: 5500 }] }), r),
+    ).toThrow(/refund of a customer credit/);
+    const inv = simpleInvoice(1000);
+    expect(() => refund(inv, 100)).toThrow(/credit memo or payment being refunded no longer exists/);
+
+    // Deleting the refund gives the credit back.
+    deleteTxn(db, r);
+    expect(doc(cm).unapplied).toBe(5500);
+    expect(txnSums()).toEqual([]);
+    expect(trialBalance()).toBe(0);
+  });
+});
+
 describe('deposits', () => {
   it('moves payments out of Undeposited Funds into the bank, with other lines', () => {
     const p1 = payment(10000, [], { ref_no: '101' }).id;

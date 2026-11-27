@@ -209,6 +209,10 @@ export function Combo({
       setText(o.label);
       setInvalid(false);
       if (o.id !== value) onChange(o.id);
+    } else if (mayAsk && onNotFound && options.length === 0 && !asking.current) {
+      // The list has not come from the server yet (she typed as the window opened): wait for
+      // it before saying the name is not on it, or Quick Add would make a second one.
+      waitForList(text.trim(), onNotFound, next);
     } else {
       setInvalid(true);
       if (value !== null) onChange(null);
@@ -216,23 +220,72 @@ export function Combo({
     }
   };
 
+  // Text left in the field before the list loaded: settled when the list comes (or after a
+  // while, when the list really is empty). A save waits for it, as for a Quick Add box.
+  const listWait = useRef<{ text: string; settle: () => void } | null>(null);
+  const waitForList = (typed: string, handler: (text: string) => Promise<number | null>, next: HTMLElement | null) => {
+    if (listWait.current) return;
+    let timer = 0;
+    const p = new Promise<boolean>((done) => {
+      const settle = () => {
+        window.clearTimeout(timer);
+        listWait.current = null;
+        // What Tab would have taken had the list been there: the name, or what QuickFill completes it to.
+        const list = optionsRef.current;
+        const m = findMatch(list, typed);
+        const o = resolve(list, typed) ?? (m ? list[m.index] : null);
+        if (o && textRef.current === typed) {
+          setText(o.label);
+          setInvalid(false);
+          if (o.id !== valueRef.current) onChange(o.id);
+          done(true);
+          return;
+        }
+        if (textRef.current !== typed) {
+          done(true); // she has typed something else since
+          return;
+        }
+        setInvalid(true);
+        askNotFound(typed, handler, next);
+        done(true);
+      };
+      listWait.current = { text: typed, settle };
+      timer = window.setTimeout(settle, 2500);
+    });
+    pending.add(p);
+    void p.finally(() => pending.delete(p));
+  };
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  useEffect(() => {
+    if (options.length > 0) listWait.current?.settle();
+  }, [options]);
+
   const handleInput = (e: ChangeEvent<HTMLInputElement>) => {
     const el = e.target;
     const typed = el.value;
     const inputType = (e.nativeEvent as InputEvent).inputType ?? '';
     setInvalid(false);
+    // A selection left over from an earlier keystroke must never be applied to this one:
+    // after "Acc" (completed to "Accumulated Depreciation", no re-render) it would select
+    // the "o" of "Acco" and the next key would overwrite it ("Accunts").
+    pendingSel.current = null;
     // Complete only while inserting at the end, never while deleting.
     if (inputType.startsWith('insert') && typed && el.selectionStart === typed.length) {
       const m = findMatch(options, typed);
       if (m) {
         const completed = typed + m.rest;
+        const rerenders = completed !== textRef.current;
         setText(completed);
         // Apply to the DOM now as well: when the completion is the same text as before
         // (typing "h" after "C" already completed to "Checking") React does not re-render,
         // so the layout effect below would never restore the selection.
         el.value = completed;
         el.setSelectionRange(typed.length, completed.length);
-        pendingSel.current = [typed.length, completed.length];
+        // Restore it after the render too (React rewrites the value), but only when one comes.
+        if (rerenders) pendingSel.current = [typed.length, completed.length];
         setHi(m.index);
         return;
       }
@@ -306,9 +359,12 @@ export function Combo({
         data-list={listName}
         onBlur={(e) => {
           focused.current = false;
-          // No box when focus left because a message box opened, or a window is closing.
+          // No box when focus left because a message box opened, a window is closing, or she
+          // went to another window (QuickBooks asks only on leaving the field within its form;
+          // a box over the other window would take the keys she types there).
           const to = e.relatedTarget instanceof HTMLElement ? e.relatedTarget : null;
-          commit(!isQuietBlur() && !isModalOpen() && !to?.closest('.msgbox'), to);
+          const otherWindow = !!to && to.closest('.win') !== e.currentTarget.closest('.win');
+          commit(!isQuietBlur() && !isModalOpen() && !to?.closest('.msgbox') && !otherWindow, to);
           onBlur?.(e);
         }}
       />

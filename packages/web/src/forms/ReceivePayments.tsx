@@ -15,7 +15,7 @@ import { Combo, settleQuickFill } from '../controls/Combo';
 import { DateField } from '../controls/DateField';
 import { nameQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
-import { handOffLocked } from './openTxn';
+import { handOffLocked, confirmDeleteTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
 import { commitActiveField, Mnemonic, refocus, useLiveState } from '../util';
 import { autoApply, payable, toggleRow, totalApplied, type ApplyRow } from './paymentApply';
@@ -440,7 +440,7 @@ export function ReceivePayments({ winId, props }: WinProps) {
   const remove = async () => {
     const id = txnIdRef.current;
     if (id === null) return;
-    if (!(await desk.confirm('Are you sure you want to delete this transaction?', { yes: '&OK', no: '&Cancel' }))) return;
+    if (!(await confirmDeleteTxn(desk, id))) return;
     try {
       await api.del(`/api/txns/${id}`);
       desk.setStatus('Payment deleted.');
@@ -642,8 +642,16 @@ export function ReceivePayments({ winId, props }: WinProps) {
             </thead>
             <tbody onKeyDown={onGridKey}>
               {form.rows.map((r, i) => (
-                <tr key={r.id} onFocus={() => (curRow.current = i)}>
-                  <td className="al-center rcv-check" onClick={() => !loading && toggle(i)}>
+                <tr key={r.id} onFocus={() => (curRow.current = i)} onMouseDown={() => (curRow.current = i)}>
+                  <td
+                    className="al-center rcv-check"
+                    onClick={() => {
+                      if (loading) return;
+                      toggle(i);
+                      // On to its Payment cell, so the row is highlighted and Discounts And Credits works on it.
+                      requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(`[data-row="${i}"][data-col="pay"]`)?.focus());
+                    }}
+                  >
                     {r.payment > 0 ? '✓' : ''}
                   </td>
                   <td className="cell-text">{formatUsDate(r.date)}</td>

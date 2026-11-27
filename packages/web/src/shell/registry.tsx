@@ -7,7 +7,8 @@ import { JournalEntry } from '../forms/JournalEntry';
 import { MakeDeposits, PaymentsToDeposit } from '../forms/MakeDeposits';
 import { PaymentDiscount, PaymentHistory } from '../forms/PaymentExtras';
 import { ReceivePayments } from '../forms/ReceivePayments';
-import { ApplyCredits } from '../forms/ApplyCredits';
+import { ApplyCreditToInvoices, ApplyCredits } from '../forms/ApplyCredits';
+import { IssueRefund } from '../forms/IssueRefund';
 import { EmailDialog } from '../forms/EmailDialog';
 import { PrintForms, SendForms } from '../forms/FormQueues';
 import { CreditMemo, Invoice } from '../forms/SalesForm';
@@ -103,6 +104,7 @@ export const registry: Registry = {
   sendforms: { component: SendForms, title: 'Select Forms to Send', width: 62, height: 28, max: true },
   printforms: { component: PrintForms, title: 'Select Invoices to Print', width: 52, height: 26, max: true },
   applycredits: { component: ApplyCredits, title: 'Apply Credits', width: 52 },
+  applycredit: { component: ApplyCreditToInvoices, title: 'Apply Credit to Invoices', width: 54 },
   txnhistory: { component: TxnHistory, title: 'Transaction History', width: 46, height: 20 },
   txnjournal: { component: TxnJournal, title: 'Transaction Journal', width: 62, height: 20 },
   // Purchase orders, bills, Pay Bills, bill payments
@@ -115,6 +117,7 @@ export const registry: Registry = {
   billpmt: { component: BillPayment, title: 'Bill Payments (Check)', width: 60, max: true },
   // Checks, transfers, payroll
   check: { component: WriteChecks, title: 'Write Checks', width: 60, max: true },
+  refund: { component: IssueRefund, title: 'Issue a Refund', width: 44 },
   transfer: { component: TransferFunds, title: 'Transfer Funds Between Accounts', width: 52, max: true },
   paycheck: { component: Paycheck, title: 'Enter Paycheck', width: 66, max: true },
   payrollitems: { component: PayrollItemList, title: 'Payroll Item List', width: 56, height: 24, max: true },

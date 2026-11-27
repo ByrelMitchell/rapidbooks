@@ -21,7 +21,7 @@ import type { DB } from '../db';
 import { AppError } from '../errors';
 import { accountRow, appliedFrom, appliedFromSql, appliedTo, appliedToSql, cap, fullName, money, nameRow, txnRow } from './common';
 import { getTxn, nextNum, saveTxn } from './posting';
-import { billName, CHECK_TYPES } from './purchasing';
+import { billName, CHECK_TYPES, poReceived } from './purchasing';
 
 // Payables and banking: the lists the purchase forms need, Pay Bills, check numbering
 // and printing queues, and payroll summaries. Open balances and unapplied amounts are
@@ -38,8 +38,8 @@ export function listOpenPurchaseOrders(db: DB, vendorId: number | null = null): 
         WHERE type = 'PURCHORD' AND closed = 0 AND (? IS NULL OR name_id = ?)
         ORDER BY date, id`,
     )
-    .all(vendorId, vendorId) as Omit<OpenPurchaseOrder, 'full_name'>[];
-  return rows.map((r) => ({ ...r, full_name: fullName(db, r.name_id) }));
+    .all(vendorId, vendorId) as Omit<OpenPurchaseOrder, 'full_name' | 'remaining'>[];
+  return rows.map((r) => ({ ...r, full_name: fullName(db, r.name_id), remaining: poReceived(db, r.id).remaining }));
 }
 
 /** Unapplied bill credits and bill payments of a vendor (or of every vendor), oldest first. */

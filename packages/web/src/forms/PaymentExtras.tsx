@@ -8,12 +8,10 @@ import { accountQuickFill } from '../lists/quickAdd';
 import { useDesktop, useWindowCommands } from '../shell/desktop';
 import { openTxn } from './openTxn';
 import type { WinProps } from '../shell/registry';
+import { defaultDiscountAccount, rememberDiscountAccount } from './discountAccount';
 import { commitActiveField, refocus, useLiveState } from '../util';
 import type { DiscountResult } from './ReceivePayments';
 import './receivables.css';
-
-// The discount account last chosen, offered first next time (this session).
-let lastDiscountAccount: number | null = null;
 
 /** Receive Payments > Discount Info: the discount on one invoice and the account it posts to. */
 export function PaymentDiscount({ winId, props }: WinProps) {
@@ -29,15 +27,15 @@ export function PaymentDiscount({ winId, props }: WinProps) {
   const start = props.discount as number;
   const [amount, setAmount, amountRef] = useLiveState<number | null>(start > 0 ? start : suggested || null);
   const [accountId, setAccountId, accountRef] = useLiveState<number | null>(
-    (props.accountId as number | null) ?? lastDiscountAccount,
+    (props.accountId as number | null) ?? null,
   );
   const [error, setError] = useState<string | null>(null);
 
-  // No account yet: one named like a discount account, if there is exactly that sort of thing.
+  // No account yet: the one last chosen here, else one named like a customer discount account.
   useEffect(() => {
     if (accountRef.current !== null || !accounts) return;
-    const guess = accounts.find((a) => !a.inactive && /discount/i.test(a.name) && a.type !== 'AR' && a.type !== 'AP');
-    if (guess) setAccountId(guess.id);
+    const guess = defaultDiscountAccount(accounts, 'customer');
+    if (guess !== null) setAccountId(guess);
   }, [accounts]);
 
   const options = useMemo(
@@ -67,7 +65,7 @@ export function PaymentDiscount({ winId, props }: WinProps) {
       refocus(field);
       return;
     }
-    if (d > 0) lastDiscountAccount = accountRef.current;
+    if (d > 0 && accountRef.current !== null) rememberDiscountAccount('customer', accountRef.current);
     const result: DiscountResult = { discount: d, accountId: d > 0 ? accountRef.current : null };
     desk.resolveWindow(winId, result);
     desk.close(winId);

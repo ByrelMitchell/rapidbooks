@@ -94,8 +94,9 @@ interface PurchItemRow {
  * Item lines: each amount (qty × cost unless given) and, when `posting`, the item's
  * purchase account. Blank rows (no item, no description, no amount) are dropped.
  */
-function computeItemLines(db: DB, lines: ItemLineInput[], posting: boolean): StoredLine[] {
+function computeItemLines(db: DB, lines: ItemLineInput[], posting: boolean, receiving: Set<number> = new Set()): StoredLine[] {
   const getItem = db.prepare('SELECT id, name, type, purchase_account_id FROM items WHERE id = ?');
+  const poLine = db.prepare('SELECT item_id FROM lines WHERE txn_id = ? AND seq = ?');
   const out: StoredLine[] = [];
   lines.forEach((l, i) => {
     const where = `item line ${i + 1}`;
@@ -128,6 +129,15 @@ function computeItemLines(db: DB, lines: ItemLineInput[], posting: boolean): Sto
         throw new AppError(400, `${item.name} has no purchase account. Edit the item and choose the expense or cost of goods sold account its purchases post to.`);
       }
       base.account_id = item.purchase_account_id;
+    }
+    // A bill line receiving a purchase order line: kept only while it is still that P.O.'s
+    // line for the same item (she may have changed the item since copying it).
+    if (l.po_txn_id !== null && l.po_seq !== null && receiving.has(l.po_txn_id)) {
+      const ordered = poLine.get(l.po_txn_id, l.po_seq) as { item_id: number | null } | undefined;
+      if (ordered && ordered.item_id === l.item_id) {
+        base.po_txn_id = l.po_txn_id;
+        base.po_seq = l.po_seq;
+      }
     }
     out.push(base);
   });
@@ -173,9 +183,26 @@ const sumOf = (lines: StoredLine[]) => lines.reduce((t, l) => t + l.amount, 0);
 // ---------------------------------------------------------------------------
 // PURCHORD
 
-export function buildPurchaseOrder(db: DB, input: PurchaseOrderInput, _old: Old): Built {
+export function buildPurchaseOrder(db: DB, input: PurchaseOrderInput, old: Old): Built {
   const vendor = requireVendor(db, input.name_id);
   const lines = computeItemLines(db, input.lines, false);
+  if (old) {
+    // Bill lines point at the P.O. lines they received by position: those lines must stay put.
+    for (const r of poLineReceipts(db, old.id)) {
+      if (r.received_qty === 0 && r.received_amount === 0) continue;
+      const now = lines[r.seq];
+      if (!now || now.item_id !== r.item_id) {
+        const item = r.item_id !== null ? (db.prepare('SELECT name FROM items WHERE id = ?').get(r.item_id) as { name: string } | undefined)?.name : null;
+        throw new AppError(
+          400,
+          `Line ${r.seq + 1}${item ? ` (${item})` : ''} has been received on a bill, so it cannot be removed, moved or changed to another item.`,
+        );
+      }
+    }
+    if (old.name_id !== vendor.id && db.prepare("SELECT 1 FROM links WHERE kind = 'po' AND to_txn = ?").get(old.id)) {
+      throw new AppError(400, 'This purchase order has been received on a bill, so it cannot be moved to another vendor.');
+    }
+  }
   const total = sumOf(lines);
   if (total < 0) throw new AppError(400, 'The total of a purchase order cannot be negative.');
   const header = blankHeader(input);
@@ -189,17 +216,95 @@ export function buildPurchaseOrder(db: DB, input: PurchaseOrderInput, _old: Old)
     to_print: input.to_print ? 1 : 0,
     total,
   });
+  // Received on bills: received in full closes it (she may have ordered fewer); a P.O. closed
+  // because it was received in full opens again when more is ordered, unless she says otherwise.
+  const wasFull = old ? poReceived(db, old.id).full : false;
+  const afterSave = (id: number) => {
+    if (!db.prepare("SELECT 1 FROM links WHERE kind = 'po' AND to_txn = ?").get(id)) return;
+    const now = poReceived(db, id).full;
+    const keptBox = !!old && input.closed === !!old.closed;
+    const closed = now ? 1 : wasFull && keptBox ? 0 : input.closed ? 1 : 0;
+    db.prepare('UPDATE txns SET closed = ? WHERE id = ?').run(closed, id);
+  };
   // Non-posting: no splits at all.
-  return { splits: [], header, lines, minSplits: 0 };
+  return { splits: [], header, lines, minSplits: 0, afterSave };
 }
 
-/** Purchase orders that no bill is linked to any more are open again. */
-export function reopenPurchaseOrders(db: DB, ids: number[]) {
-  for (const id of ids) {
+// ---------------------------------------------------------------------------
+// Receiving purchase orders
+
+interface PoLineReceipt {
+  seq: number;
+  item_id: number | null;
+  qty: number | null;
+  rate: number | null;
+  amount: number;
+  received_qty: number;
+  received_amount: number;
+}
+
+/** Each line of a purchase order, with how much the bills' lines pointing at it have received. */
+export function poLineReceipts(db: DB, poId: number): PoLineReceipt[] {
+  return db
+    .prepare(
+      `SELECT l.seq, l.item_id, l.qty, l.rate, l.amount,
+              COALESCE(SUM(COALESCE(b.qty, 0)), 0) AS received_qty, COALESCE(SUM(b.amount), 0) AS received_amount
+         FROM lines l LEFT JOIN lines b ON b.po_txn_id = l.txn_id AND b.po_seq = l.seq
+        WHERE l.txn_id = ?
+        GROUP BY l.id ORDER BY l.seq`,
+    )
+    .all(poId) as PoLineReceipt[];
+}
+
+/** A line is received in full when its quantity is (or, without a quantity, its amount). Text lines need nothing. */
+const lineDone = (l: PoLineReceipt) =>
+  l.item_id === null || (l.qty !== null && l.qty > 0 ? l.received_qty >= l.qty - 1e-9 : l.received_amount >= l.amount);
+
+/** The amount of a line not yet received. */
+function lineRemaining(l: PoLineReceipt): number {
+  if (lineDone(l)) return 0;
+  if (l.qty !== null && l.qty > 0) return Math.round((l.amount * (l.qty - l.received_qty)) / l.qty);
+  return l.amount - l.received_amount;
+}
+
+/**
+ * What bills have received of a purchase order: in full or not, the amount received, and the
+ * amount still to come. A P.O. on a bill whose lines point at none of its lines (bills made
+ * before lines were received one by one) counts as received in full, as it did then.
+ */
+export function poReceived(db: DB, poId: number): { full: boolean; amount: number; remaining: number } {
+  const po = txnRow(db, poId);
+  if (!po) return { full: false, amount: 0, remaining: 0 };
+  const linked = db.prepare("SELECT 1 FROM links WHERE kind = 'po' AND to_txn = ?").get(poId);
+  if (!linked) return { full: false, amount: 0, remaining: po.total };
+  if (!db.prepare('SELECT 1 FROM lines WHERE po_txn_id = ? LIMIT 1').get(poId)) return { full: true, amount: po.total, remaining: 0 };
+  const lines = poLineReceipts(db, poId);
+  return {
+    full: lines.every(lineDone),
+    amount: lines.reduce((t, l) => t + l.received_amount, 0),
+    remaining: lines.reduce((t, l) => t + lineRemaining(l), 0),
+  };
+}
+
+/** The amount received of each purchase order, before a change to the bills receiving them. */
+export function poReceiptSnapshot(db: DB, ids: Iterable<number>): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const id of ids) if (!out.has(id)) out.set(id, poReceived(db, id).amount);
+  return out;
+}
+
+/**
+ * After bills receiving these purchase orders changed: a P.O. now received in full closes; one
+ * that received less than before (a bill edited or deleted) and is no longer in full reopens.
+ * One she closed by hand stays closed while nothing it received is taken away.
+ */
+export function settlePurchaseOrders(db: DB, before: Map<number, number>) {
+  for (const [id, was] of before) {
     const po = txnRow(db, id);
-    if (!po || po.type !== 'PURCHORD' || !po.closed) continue;
-    const still = db.prepare("SELECT 1 FROM links WHERE kind = 'po' AND to_txn = ?").get(id);
-    if (!still) db.prepare('UPDATE txns SET closed = 0, version = version + 1 WHERE id = ?').run(id);
+    if (!po || po.type !== 'PURCHORD') continue;
+    const now = poReceived(db, id);
+    if (now.full && !po.closed) db.prepare('UPDATE txns SET closed = 1, version = version + 1 WHERE id = ?').run(id);
+    else if (!now.full && po.closed && now.amount < was) db.prepare('UPDATE txns SET closed = 0, version = version + 1 WHERE id = ?').run(id);
   }
 }
 
@@ -217,7 +322,8 @@ export function buildBill(db: DB, input: BillInput | BillCreditInput, old: Old):
     if (!terms) throw new AppError(400, 'Those terms no longer exist.');
   }
 
-  const lines = [...computeExpenseLines(db, input.expenses), ...computeItemLines(db, input.items, true)];
+  const receiving = new Set(input.type === 'BILL' ? input.po_ids : []);
+  const lines = [...computeExpenseLines(db, input.expenses), ...computeItemLines(db, input.items, true, receiving)];
   if (lines.length === 0) throw new AppError(400, 'Enter at least one expense or item line.');
   const total = sumOf(lines);
   if (total < 0) {
@@ -273,7 +379,9 @@ export function buildBill(db: DB, input: BillInput | BillCreditInput, old: Old):
         throw new AppError(400, `${poName} is for ${fullName(db, po.name_id)}, so it cannot be received on a bill from ${fullName(db, vendor.id)}.`);
       }
       if (po.closed && !oldPos.includes(id)) throw new AppError(400, `${poName} is already closed.`);
-      poLinks.push({ to_txn: id, amount: po.total, discount: 0, discount_account_id: null });
+      // The amount received from it on this bill; all of it when no line says which P.O. line it is.
+      const mine = lines.filter((l) => l.po_txn_id === id);
+      poLinks.push({ to_txn: id, amount: mine.length > 0 ? sumOf(mine) : po.total, discount: 0, discount_account_id: null });
     }
   }
 
@@ -298,13 +406,9 @@ export function buildBill(db: DB, input: BillInput | BillCreditInput, old: Old):
   const built: Built = { splits, header, lines, minSplits: 1 };
   if (isBill) {
     built.links = { kind: 'po', list: poLinks };
-    built.afterSave = () => {
-      const now = poLinks.map((l) => l.to_txn);
-      for (const id of now) {
-        db.prepare('UPDATE txns SET closed = 1, version = version + 1 WHERE id = ? AND closed = 0').run(id);
-      }
-      reopenPurchaseOrders(db, oldPos.filter((id) => !now.includes(id)));
-    };
+    // What the P.O.s on it (now or before) had received, before this save changes it.
+    const before = poReceiptSnapshot(db, [...oldPos, ...poLinks.map((l) => l.to_txn)]);
+    built.afterSave = () => settlePurchaseOrders(db, before);
   }
   return built;
 }
@@ -384,7 +488,76 @@ export function buildBillPayment(db: DB, input: BillPaymentInput, old: Old): Bui
 // ---------------------------------------------------------------------------
 // CHECK
 
-export function buildCheck(db: DB, input: CheckInput, _old: Old): Built {
+/** The credit memo or payment a refund check pays back (the "apply" link into it), if it is one. */
+export function refundOf(db: DB, checkId: number): { credit_id: number; amount: number } | null {
+  const r = db
+    .prepare(
+      `SELECT l.from_txn AS credit_id, l.amount FROM links l JOIN txns f ON f.id = l.from_txn
+        WHERE l.kind = 'apply' AND l.to_txn = ? AND f.type IN ('CREDITMEMO', 'PAYMENT') ORDER BY l.id LIMIT 1`,
+    )
+    .get(checkId) as { credit_id: number; amount: number } | undefined;
+  return r ?? null;
+}
+
+/**
+ * Issue a Refund: a check that pays a customer back what a credit memo (or a payment not
+ * applied to invoices) left them. Dr A/R for the customer, Cr the bank; the credit is applied
+ * to the check, as QuickBooks does, so it is no longer available for invoices.
+ */
+function buildRefund(db: DB, input: CheckInput, refund: { credit_id: number; amount: number }, old: Old): Built {
+  const bank = bankAccount(db, input.account_id, 'refund');
+  const credit = txnRow(db, refund.credit_id);
+  if (!credit || (credit.type !== 'CREDITMEMO' && credit.type !== 'PAYMENT')) {
+    throw new AppError(400, 'The credit memo or payment being refunded no longer exists.');
+  }
+  if (credit.name_id === null || credit.ar_account_id === null) throw new AppError(400, 'That credit has no customer to refund.');
+  if (old) {
+    const was = refundOf(db, old.id);
+    if (!was || was.credit_id !== credit.id) throw new AppError(400, 'This check cannot be made into a refund of another credit. Delete it and issue a new refund.');
+  }
+  if (input.expenses.some((e) => e.account_id !== null || e.amount !== 0) || input.items.some((l) => l.item_id !== null)) {
+    throw new AppError(400, 'A refund check has no expense or item lines.');
+  }
+  const what = credit.type === 'PAYMENT' ? 'payment' : 'credit memo';
+  const mine = old ? (refundOf(db, old.id)?.amount ?? 0) : 0;
+  const available = credit.total - appliedFrom(db, credit.id) + mine;
+  if (refund.amount <= 0) throw new AppError(400, 'Enter the amount to refund.');
+  if (refund.amount > available) {
+    throw new AppError(400, `Only ${money(available)} of that ${what} is left to refund.`);
+  }
+  const customer = credit.name_id;
+  const header = blankHeader({ ...input, name_id: customer, num: input.to_print ? '' : input.num });
+  Object.assign(header, {
+    to_print: input.to_print ? 1 : 0,
+    bill_addr: input.address,
+    account_id: bank,
+    ar_account_id: credit.ar_account_id,
+    total: refund.amount,
+  });
+  const splits: BuiltSplit[] = [
+    { account_id: bank, amount: -refund.amount, name_id: customer, memo: input.memo },
+    { account_id: credit.ar_account_id, amount: refund.amount, name_id: customer, memo: input.memo },
+  ];
+  return {
+    splits,
+    header,
+    lines: [],
+    minSplits: 2,
+    afterSave: (txnId) => {
+      // The credit is applied to the refund (the link runs from the credit, like any application).
+      db.prepare("DELETE FROM links WHERE kind = 'apply' AND to_txn = ?").run(txnId);
+      db.prepare("INSERT INTO links (from_txn, to_txn, kind, amount) VALUES (?, ?, 'apply', ?)").run(credit.id, txnId, refund.amount);
+      // The credit's own form now shows a different amount left.
+      db.prepare('UPDATE txns SET version = version + 1 WHERE id = ?').run(credit.id);
+    },
+  };
+}
+
+export function buildCheck(db: DB, input: CheckInput, old: Old): Built {
+  if (input.refund) return buildRefund(db, input, input.refund, old);
+  if (old && refundOf(db, old.id)) {
+    throw new AppError(400, 'This check is a refund of a customer credit. Open it from the credit memo (or the register) to change it.');
+  }
   const bank = bankAccount(db, input.account_id, 'check');
   if (input.name_id !== null && !nameRow(db, input.name_id)) throw new AppError(400, 'The payee no longer exists.');
   const lines = [...computeExpenseLines(db, input.expenses), ...computeItemLines(db, input.items, true)];
@@ -525,6 +698,8 @@ interface LineRow {
   account_id: number | null;
   name_id: number | null;
   payroll_item_id: number | null;
+  po_txn_id: number | null;
+  po_seq: number | null;
   p_name: string | null;
   p_kind: PayrollItemKind | null;
 }
@@ -553,7 +728,7 @@ export function getPurchTxn(db: DB, row: TxnHeaderRow, base: Txn): PurchTxn {
   const rows = db
     .prepare(
       `SELECT l.id, l.seq, l.item_id, l.description, l.qty, l.rate, l.amount, l.account_id, l.name_id, l.payroll_item_id,
-              p.name AS p_name, p.kind AS p_kind
+              l.po_txn_id, l.po_seq, p.name AS p_name, p.kind AS p_kind
          FROM lines l LEFT JOIN payroll_items p ON p.id = l.payroll_item_id
         WHERE l.txn_id = ? ORDER BY l.seq`,
     )
@@ -561,6 +736,7 @@ export function getPurchTxn(db: DB, row: TxnHeaderRow, base: Txn): PurchTxn {
   const expenses: ExpenseLine[] = [];
   const items: ItemLine[] = [];
   const pay_lines: PayLine[] = [];
+  const receipts = row.type === 'PURCHORD' ? new Map(poLineReceipts(db, id).map((l) => [l.seq, l])) : null;
   for (const r of rows) {
     if (r.payroll_item_id !== null) {
       pay_lines.push({ id: r.id, seq: r.seq, payroll_item_id: r.payroll_item_id, name: r.p_name ?? '', kind: r.p_kind!, hours: r.qty, rate: r.rate, amount: r.amount });
@@ -569,7 +745,9 @@ export function getPurchTxn(db: DB, row: TxnHeaderRow, base: Txn): PurchTxn {
     } else {
       items.push({
         id: r.id, seq: r.seq, item_id: r.item_id, description: r.description, qty: r.qty, rate: r.rate, amount: r.amount,
-        name_id: r.name_id, account_id: r.account_id,
+        name_id: r.name_id, account_id: r.account_id, po_txn_id: r.po_txn_id, po_seq: r.po_seq,
+        received_qty: receipts ? receipts.get(r.seq)?.received_qty ?? 0 : null,
+        received_amount: receipts?.get(r.seq)?.received_amount ?? 0,
       });
     }
   }
@@ -605,5 +783,6 @@ export function getPurchTxn(db: DB, row: TxnHeaderRow, base: Txn): PurchTxn {
     po_ids: t === 'BILL' ? links_out.filter((l) => l.kind === 'po').map((l) => l.txn_id) : [],
     bill_ids: t === 'PURCHORD' ? links_in.filter((l) => l.kind === 'po').map((l) => l.txn_id) : [],
     paycheck: t === 'PAYCHECK' ? paycheckTotals(pay_lines) : null,
+    refund: t === 'CHECK' ? refundOf(db, id) : null,
   };
 }
